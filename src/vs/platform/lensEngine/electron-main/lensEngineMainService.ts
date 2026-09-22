@@ -352,13 +352,19 @@ function hasLocalMcp(user: ILensUserOpencodeConfig): boolean {
 	return Object.values(user.mcp ?? {}).some(server => !!server && typeof server === 'object' && (server as { type?: unknown }).type === 'local');
 }
 
-/** LENS_DEFAULT_MODEL when set, otherwise the newest model: by release date, then by the version in its name. */
+/** LENS_DEFAULT_MODEL when set, otherwise the newest model: by release date, then the provider's own family, then the version in its name. */
 function chooseDefaultModel(models: ILensUpstreamModel[]): ILensUpstreamModel {
 	const preferred = models.find(model => model.id === process.env.LENS_DEFAULT_MODEL);
 	if (preferred) {
 		return preferred;
 	}
-	return [...models].sort((a, b) => (b.created ?? 0) - (a.created ?? 0) || compareVersions(versionOf(b.id), versionOf(a.id)))[0];
+	return [...models].sort((a, b) => (b.created ?? 0) - (a.created ?? 0) || flagship(b.id) - flagship(a.id) || compareVersions(versionOf(b.id), versionOf(a.id)))[0];
+}
+
+/** Without release dates, a provider's own family (gemini-* on Gemini) beats other families it also serves (e.g. Gemma). */
+function flagship(id: string): number {
+	const slash = id.indexOf('/');
+	return slash > 0 && id.slice(slash + 1).startsWith(`${id.slice(0, slash)}-`) ? 1 : 0;
 }
 
 function versionOf(id: string): number[] {
