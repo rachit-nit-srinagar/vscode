@@ -41,6 +41,8 @@ export interface ILensEngineMainService {
 const ENGINE_USERNAME = 'opencode';
 const READY_TIMEOUT_MS = 90_000;
 const MAX_RESTARTS = 5;
+const DEFAULT_CONTEXT_TOKENS = 128_000;
+const DEFAULT_OUTPUT_TOKENS = 8192;
 // Env vars that must never reach the engine: the agent can read its own environment.
 const SECRET_ENV = ['LITELLM_API_KEY', 'LITELLM_BASE_URL', 'LENS_DEFAULT_MODEL'];
 
@@ -259,7 +261,8 @@ function engineConfig(facade: ILensFacadeAddress, models: ILensUpstreamModel[]) 
 					name: model.name,
 					attachment: model.vision,
 					modalities: { input: model.vision ? ['text', 'image'] : ['text'], output: ['text'] },
-					...(model.contextWindow ? { limit: { context: model.contextWindow, output: model.maxOutputTokens ?? 8192 } } : {}),
+					// Without an explicit limit opencode asks for more output tokens than many providers allow.
+					limit: { context: model.contextWindow ?? DEFAULT_CONTEXT_TOKENS, output: Math.min(model.maxOutputTokens ?? DEFAULT_OUTPUT_TOKENS, model.contextWindow ?? DEFAULT_CONTEXT_TOKENS) },
 				}])),
 			},
 		},

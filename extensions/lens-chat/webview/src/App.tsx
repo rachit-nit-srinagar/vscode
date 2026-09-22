@@ -288,7 +288,7 @@ function ChatApp() {
 	}
 
 	function handleEvent(payload: unknown) {
-		const event = payload as { type?: string; properties?: { part?: ChatPart } };
+		const event = payload as { type?: string; properties?: { part?: ChatPart; sessionID?: string; error?: { name?: string; message?: string; data?: { message?: string } } } };
 		const eventType = String(event?.type ?? '');
 		const sessionID = eventSessionID(payload);
 		if (sessionID && sessionID !== active()) {
@@ -316,6 +316,17 @@ function ChatApp() {
 		}
 		if (eventType.includes('permission')) {
 			vscode.postMessage({ type: 'permission.list' });
+		}
+		if (eventType === 'session.error') {
+			const failure = event?.properties?.error;
+			const sessionID = event?.properties?.sessionID;
+			if (!sessionID || sessionID === active()) {
+				setError(String(failure?.data?.message ?? failure?.message ?? failure?.name ?? 'The model returned an error'));
+				setBusy(false);
+				if (active()) {
+					vscode.postMessage({ type: 'session.messages', sessionID: active() });
+				}
+			}
 		}
 		if (eventType.includes('session.status') || eventType === 'session.idle') {
 			if (active()) {

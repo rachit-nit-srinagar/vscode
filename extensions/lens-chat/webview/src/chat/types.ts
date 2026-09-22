@@ -44,7 +44,7 @@ export type QuestionRequest = {
 };
 
 export type ChatMessage = {
-	info?: { role?: string; id?: string; time?: { created?: number; completed?: number } };
+	info?: { role?: string; id?: string; time?: { created?: number; completed?: number }; error?: { name?: string; message?: string; data?: { message?: string } } };
 	parts?: ChatPart[];
 	role?: string;
 };

@@ -19,13 +19,14 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 	}));
 
 	const groups = createMemo(() => groupAssistantParts(parts()));
+	const error = createMemo(() => messageError(props.message));
 	const lastPart = createMemo(() => {
 		const all = parts();
 		return all[all.length - 1];
 	});
 
 	return (
-		<Show when={parts().length > 0}>
+		<Show when={parts().length > 0 || !!error()}>
 			<div class={`lens-row lens-row-${role()}`}>
 				<Show when={role() === 'user'} fallback={
 					<For each={groups()}>
@@ -63,9 +64,21 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 				}>
 					<UserBubble parts={parts()} />
 				</Show>
+				<Show when={error()}>
+					<ErrorCard title="The model returned an error" detail={error()} />
+				</Show>
 			</div>
 		</Show>
 	);
+}
+
+/** Provider failures arrive as `info.error` on an assistant message with no parts. */
+function messageError(message: ChatMessage): string | undefined {
+	const error = message.info?.error;
+	if (!error) {
+		return undefined;
+	}
+	return error.data?.message ?? error.message ?? error.name ?? 'Unknown error';
 }
 
 function UserBubble(props: { parts: ChatPart[] }) {

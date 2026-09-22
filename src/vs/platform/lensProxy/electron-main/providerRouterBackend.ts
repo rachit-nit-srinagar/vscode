@@ -17,6 +17,8 @@ interface IProviderEndpoint {
 	readonly manualModels?: boolean;
 }
 
+// Speech, audio, embedding and safety-classifier models show up in /models but cannot chat.
+const NON_CHAT_MODEL = /whisper|tts|orpheus|transcribe|speech|audio|embed|moderation|prompt-guard|guard-|dall-e|image-gen|imagen|veo/i;
 const VISION_HINT = /gpt-4o|gpt-4\.1|gpt-5|\bo[134]\b|o[34]-|claude|gemini|grok-(2-vision|4)|llama-4|vision|pixtral|llava|qwen.*vl|gemma-3/i;
 
 export function providerEndpoint(config: ILensProviderConfig, apiKey: string | undefined): IProviderEndpoint {
@@ -79,14 +81,17 @@ export async function fetchProviderModels(provider: ILensResolvedProvider): Prom
 	if (!response.ok) {
 		throw new Error(`${config.type}: listing models failed (HTTP ${response.status})`);
 	}
-	const body = await response.json() as { data?: { id?: string; name?: string; display_name?: string; architecture?: { input_modalities?: string[] } }[] };
+	const body = await response.json() as { data?: IProviderModelEntry[] };
 	return (body.data ?? []).flatMap(model => {
 		const id = model.id?.replace(/^models\//, '');
-		if (!id) {
+		if (!id || NON_CHAT_MODEL.test(id)) {
 			return [];
 		}
 		const vision = model.architecture?.input_modalities ? model.architecture.input_modalities.includes('image') : VISION_HINT.test(id);
-		return [{ id, name: model.display_name ?? model.name ?? id, vision }];
+		// Providers reject requests whose max_tokens exceed their limit, so pass on whatever limits they publish.
+		const contextWindow = positive(model.context_window) ?? positive(model.context_length) ?? positive(model.max_input_tokens);
+		const maxOutputTokens = positive(model.max_completion_tokens) ?? positive(model.max_output_tokens) ?? positive(model.top_provider?.max_completion_tokens);
+		return [{ id, name: model.display_name ?? model.name ?? id, vision, contextWindow, maxOutputTokens }];
 	});
 }
 
@@ -126,6 +131,23 @@ export class ProviderRouterBackend implements ILensLlmBackend {
 		const endpoint = providerEndpoint(provider.config, provider.apiKey);
 		return { url: `${endpoint.baseUrl}/chat/completions`, headers: endpoint.headers, model: model.slice(slash + 1) };
 	}
+}
+
+interface IProviderModelEntry {
+	readonly id?: string;
+	readonly name?: string;
+	readonly display_name?: string;
+	readonly architecture?: { readonly input_modalities?: string[] };
+	readonly context_window?: number;
+	readonly context_length?: number;
+	readonly max_input_tokens?: number;
+	readonly max_completion_tokens?: number;
+	readonly max_output_tokens?: number;
+	readonly top_provider?: { readonly max_completion_tokens?: number };
+}
+
+function positive(value: unknown): number | undefined {
+	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function requireUrl(value: string | undefined): string {
