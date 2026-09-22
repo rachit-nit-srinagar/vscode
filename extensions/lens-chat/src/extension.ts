@@ -1,11 +1,21 @@
+/*---------------------------------------------------------------------------------------------
+ *  Lens. Licensed under the MIT License.
+ *--------------------------------------------------------------------------------------------*/
+
 import * as vscode from 'vscode';
 import { promises as fs } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
 interface LensMessage {
-	readonly role?: string;
+	readonly info?: { readonly role?: string };
 	readonly parts?: readonly { readonly type?: string; readonly text?: string }[];
+}
+
+interface LensEngine {
+	readonly opencodeUrl: string;
+	readonly username: string;
+	readonly password: string;
 }
 
 interface LensSession {
@@ -25,20 +35,32 @@ class LensChatViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private async handleMessage(message: { readonly type?: string; readonly text?: string }): Promise<void> {
-		if (message.type !== 'send' || !message.text?.trim()) return;
+		if (message.type !== 'send' || !message.text?.trim()) {
+			return;
+		}
 		try {
-			const baseUrl = await this.engineUrl();
-			const token = vscode.workspace.getConfiguration().get<string>('lens.engine.token');
-			if (!baseUrl) throw new Error('Lens engine is not configured. Set lens.engine.url or start the Lens engine.');
-			const headers: Record<string, string> = { 'content-type': 'application/json' };
-			if (token) headers.authorization = `Bearer ${token}`;
+			const engine = await this.engine();
+			if (!engine) {
+				throw new Error('Lens engine is not running. Set LITELLM_BASE_URL (and LITELLM_API_KEY) before starting Lens.');
+			}
+			const baseUrl = engine.opencodeUrl;
+			const headers: Record<string, string> = {
+				'content-type': 'application/json',
+				authorization: `Basic ${Buffer.from(`${engine.username}:${engine.password}`).toString('base64')}`
+			};
+			const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			if (folder) {
+				headers['x-opencode-directory'] = folder;
+			}
 			if (!this.session) {
 				const response = await fetch(`${baseUrl}/session`, {
 					method: 'POST',
 					headers,
 					body: JSON.stringify({ title: 'Lens Chat' })
 				});
-				if (!response.ok) throw new Error(`Session creation failed: HTTP ${response.status}`);
+				if (!response.ok) {
+					throw new Error(`Session creation failed: HTTP ${response.status}`);
+				}
 				this.session = await response.json() as LensSession;
 			}
 			const promptResponse = await fetch(`${baseUrl}/session/${encodeURIComponent(this.session.id)}/message`, {
@@ -46,31 +68,38 @@ class LensChatViewProvider implements vscode.WebviewViewProvider {
 				headers,
 				body: JSON.stringify({ parts: [{ type: 'text', text: message.text }] })
 			});
-			if (!promptResponse.ok) throw new Error(`Prompt failed: HTTP ${promptResponse.status}`);
+			if (!promptResponse.ok) {
+				throw new Error(`Prompt failed: HTTP ${promptResponse.status}`);
+			}
 			await this.refreshMessages(baseUrl, headers);
 		} catch (error) {
 			this.post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
 		}
 	}
 
-	private async engineUrl(): Promise<string | undefined> {
-		const configured = vscode.workspace.getConfiguration().get<string>('lens.engine.url')?.replace(/\/+$/, '');
-		if (configured) return configured;
+	private async engine(): Promise<LensEngine | undefined> {
 		try {
-			const discovery = JSON.parse(await fs.readFile(join(tmpdir(), `lens-engine-${process.ppid}.json`), 'utf8')) as { opencodeUrl?: string };
-			return discovery.opencodeUrl?.replace(/\/+$/, '');
+			const discovery = JSON.parse(await fs.readFile(join(tmpdir(), `lens-engine-${process.ppid}.json`), 'utf8')) as Partial<LensEngine>;
+			if (!discovery.opencodeUrl || !discovery.username || !discovery.password) {
+				return undefined;
+			}
+			return { opencodeUrl: discovery.opencodeUrl.replace(/\/+$/, ''), username: discovery.username, password: discovery.password };
 		} catch {
 			return undefined;
 		}
 	}
 
 	private async refreshMessages(baseUrl: string, headers: Record<string, string>): Promise<void> {
-		if (!this.session) return;
+		if (!this.session) {
+			return;
+		}
 		const response = await fetch(`${baseUrl}/session/${encodeURIComponent(this.session.id)}/message`, { headers });
-		if (!response.ok) throw new Error(`Message history failed: HTTP ${response.status}`);
+		if (!response.ok) {
+			throw new Error(`Message history failed: HTTP ${response.status}`);
+		}
 		this.messages = await response.json() as LensMessage[];
 		this.post({ type: 'messages', messages: this.messages.map(message => ({
-			role: message.role ?? 'assistant',
+			role: message.info?.role ?? 'assistant',
 			text: (message.parts ?? []).map(part => part.text ?? '').join('')
 		})) });
 	}
