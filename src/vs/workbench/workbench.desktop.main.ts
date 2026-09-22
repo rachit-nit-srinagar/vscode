@@ -57,6 +57,8 @@ import './services/extensionManagement/electron-browser/extensionManagementServi
 import './services/mcp/electron-browser/mcpGalleryManifestService.js';
 import './services/mcp/electron-browser/mcpWorkbenchManagementService.js';
 import './services/encryption/electron-browser/encryptionService.js';
+import './services/lensEngine/electron-browser/lensLiteLlmConfigService.js';
+import './services/lensEngine/electron-browser/lensEngineRestartService.js';
 import './services/imageResize/electron-browser/imageResizeService.js';
 import './services/localTranscription/electron-browser/localTranscriptionService.js';
 import './services/secrets/electron-browser/secretStorageService.js';
@@ -194,6 +196,7 @@ import './contrib/agentsVoice/electron-browser/agentsVoiceNativeCommands.js';
 
 // Encryption
 import './contrib/encryption/electron-browser/encryption.contribution.js';
+import './contrib/lens/electron-browser/lens.contribution.js';
 
 // Emergency Alert
 import './contrib/emergencyAlert/electron-browser/emergencyAlert.contribution.js';

@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Lens. Licensed under the MIT License.
+ *  Lens. Proprietary; built on MIT-licensed opencode and VS Code.
  *--------------------------------------------------------------------------------------------*/
 
 import { ChildProcess, spawn } from 'child_process';
@@ -8,6 +8,7 @@ import { existsSync, promises as fs } from 'fs';
 import { createServer } from 'net';
 import { homedir, tmpdir } from 'os';
 import { Disposable } from '../../../base/common/lifecycle.js';
+import { parse } from '../../../base/common/jsonc.js';
 import { join } from '../../../base/common/path.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
 import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
@@ -16,6 +17,8 @@ import { IProductService } from '../../product/common/productService.js';
 import { ILensUpstreamModel } from '../../lensProxy/common/lensLlmBackend.js';
 import { LensOpenAiFacade, ILensFacadeAddress } from '../../lensProxy/electron-main/lensOpenAiFacade.js';
 import { LiteLlmBackend } from '../../lensProxy/electron-main/liteLlmBackend.js';
+import { ILensLiteLlmConfigService } from '../common/lensLiteLlmConfig.js';
+import { LensLiteLlmConfigMainService } from './lensLiteLlmConfigMainService.js';
 
 export const ILensEngineMainService = createDecorator<ILensEngineMainService>('lensEngineMainService');
 
@@ -28,6 +31,8 @@ export interface ILensEngineInfo {
 export interface ILensEngineMainService {
 	readonly _serviceBrand: undefined;
 	start(): Promise<ILensEngineInfo | undefined>;
+	/** Stops and restarts the engine, re-reading the LiteLLM connection and model settings. */
+	restart(): Promise<ILensEngineInfo | undefined>;
 	stop(): void;
 }
 
@@ -47,15 +52,23 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	private starting: Promise<ILensEngineInfo | undefined> | undefined;
 	private restarts = 0;
 	private disposed = false;
+	/** Set around an intentional restart so the crash-recovery exit handler doesn't also react. */
+	private restarting = false;
 	private readonly discoveryFile = join(tmpdir(), `lens-engine-${process.pid}.json`);
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
 		@IProductService private readonly productService: IProductService,
 		@IEnvironmentMainService private readonly environmentMainService: IEnvironmentMainService,
+		@ILensLiteLlmConfigService lensLiteLlmConfigService: ILensLiteLlmConfigService,
 	) {
 		super();
+		// Single main-process implementation; readApiKey() is intentionally not on the shared,
+		// IPC-exposed interface so the key never travels to the renderer.
+		this.lensLiteLlmConfigService = lensLiteLlmConfigService as LensLiteLlmConfigMainService;
 	}
+
+	private readonly lensLiteLlmConfigService: LensLiteLlmConfigMainService;
 
 	start(): Promise<ILensEngineInfo | undefined> {
 		this.starting ??= this.doStart().catch(error => {
@@ -65,29 +78,43 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		return this.starting;
 	}
 
+	async restart(): Promise<ILensEngineInfo | undefined> {
+		this.logService.info('[LensEngine] restarting to pick up LiteLLM connection/model changes');
+		this.restarting = true;
+		this.teardown();
+		this.restarting = false;
+		this.restarts = 0;
+		this.starting = undefined;
+		return this.start();
+	}
+
 	private async doStart(): Promise<ILensEngineInfo | undefined> {
-		const baseUrl = process.env.LITELLM_BASE_URL;
+		const settings = await this.readUserSettings();
+		const baseUrl = (settings.baseUrl?.trim() || undefined) ?? process.env.LITELLM_BASE_URL;
 		if (!baseUrl) {
-			this.logService.warn('[LensEngine] LITELLM_BASE_URL is not set; Lens engine not started.');
+			this.logService.warn('[LensEngine] no LiteLLM base URL configured (lens.liteLlm.baseUrl or LITELLM_BASE_URL); Lens engine not started.');
 			return undefined;
 		}
+		const apiKey = (await this.lensLiteLlmConfigService.readApiKey()) ?? process.env.LITELLM_API_KEY;
 		const opencodeRoot = process.env.LENS_OPENCODE_ROOT ?? join(this.environmentMainService.appRoot, '..', 'opencode');
 		if (!existsSync(join(opencodeRoot, 'packages', 'opencode', 'src', 'index.ts'))) {
 			throw new Error(`opencode sources not found at ${opencodeRoot} (set LENS_OPENCODE_ROOT)`);
 		}
 
-		const backend = new LiteLlmBackend(baseUrl, process.env.LITELLM_API_KEY);
+		const backend = new LiteLlmBackend(baseUrl, apiKey);
 		this.facade = new LensOpenAiFacade(backend, message => this.logService.info(message));
 		const facade = await this.facade.start();
 
-		const models = await backend.listModels().catch(error => {
+		const allModels = await backend.listModels().catch(error => {
 			this.logService.error(`[LensEngine] could not list LiteLLM models: ${error}`);
 			return [];
 		});
+		const enabledIds = settings.enabledModels?.filter(id => typeof id === 'string' && id.length > 0) ?? [];
+		const models = enabledIds.length ? allModels.filter(model => enabledIds.includes(model.id)) : allModels;
 		if (!models.length) {
-			throw new Error('LiteLLM returned no models');
+			throw new Error(enabledIds.length ? 'none of the models in lens.liteLlm.enabledModels were found on LiteLLM' : 'LiteLLM returned no models');
 		}
-		this.logService.info(`[LensEngine] ${models.length} models from LiteLLM`);
+		this.logService.info(`[LensEngine] ${models.length} models from LiteLLM${enabledIds.length ? ` (filtered from ${allModels.length})` : ''}`);
 
 		const port = await freePort();
 		const password = randomBytes(24).toString('hex');
@@ -127,7 +154,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		child.stderr?.on('data', data => this.logService.info(`[LensEngine] ${String(data).trimEnd()}`));
 		child.on('exit', code => {
 			this.child = undefined;
-			if (this.disposed) {
+			if (this.disposed || this.restarting) {
 				return;
 			}
 			this.logService.warn(`[LensEngine] engine exited with code ${code}`);
@@ -144,6 +171,21 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		});
 	}
 
+	private async readUserSettings(): Promise<{ baseUrl?: string; enabledModels?: string[] }> {
+		const settingsFile = join(this.environmentMainService.appSettingsHome.fsPath, 'settings.json');
+		try {
+			if (!existsSync(settingsFile)) {
+				return {};
+			}
+			const contents = await fs.readFile(settingsFile, 'utf8');
+			const parsed = parse<{ 'lens.liteLlm.baseUrl'?: string; 'lens.liteLlm.enabledModels'?: string[] }>(contents) ?? {};
+			return { baseUrl: parsed['lens.liteLlm.baseUrl'], enabledModels: parsed['lens.liteLlm.enabledModels'] };
+		} catch (error) {
+			this.logService.warn(`[LensEngine] could not read user settings.json: ${error instanceof Error ? error.message : error}`);
+			return {};
+		}
+	}
+
 	private async writeDiscovery(info: ILensEngineInfo): Promise<void> {
 		const temp = `${this.discoveryFile}.${randomBytes(4).toString('hex')}`;
 		await fs.writeFile(temp, JSON.stringify(info), { mode: 0o600 });
@@ -152,11 +194,16 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 
 	stop(): void {
 		this.disposed = true;
+		this.teardown();
+	}
+
+	private teardown(): void {
 		this.child?.kill();
 		this.facade?.dispose();
 		if (this.info) {
 			fs.rm(this.discoveryFile, { force: true }).catch(() => undefined);
 		}
+		this.info = undefined;
 	}
 
 	override dispose(): void {

@@ -1,5 +1,5 @@
 /*---------------------------------------------------------------------------------------------
- *  Lens. Licensed under the MIT License.
+ *  Lens. Proprietary; built on MIT-licensed opencode and VS Code.
  *--------------------------------------------------------------------------------------------*/
 
 import type { IncomingMessage, Server, ServerResponse } from 'http';

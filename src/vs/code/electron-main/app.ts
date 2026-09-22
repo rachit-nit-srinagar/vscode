@@ -38,6 +38,9 @@ import { DialogMainService, IDialogMainService } from '../../platform/dialogs/el
 import { IEncryptionMainService } from '../../platform/encryption/common/encryptionService.js';
 import { EncryptionMainService } from '../../platform/encryption/electron-main/encryptionMainService.js';
 import { ILensEngineMainService, LensEngineMainService } from '../../platform/lensEngine/electron-main/lensEngineMainService.js';
+import { ILensLiteLlmConfigService } from '../../platform/lensEngine/common/lensLiteLlmConfig.js';
+import { ILensEngineRestartService } from '../../platform/lensEngine/common/lensEngineRestart.js';
+import { LensLiteLlmConfigMainService } from '../../platform/lensEngine/electron-main/lensLiteLlmConfigMainService.js';
 import { ipcBrowserViewChannelName } from '../../platform/browserView/common/browserView.js';
 import { ipcBrowserViewGroupChannelName } from '../../platform/browserView/common/browserViewGroup.js';
 import { BrowserViewMainService, IBrowserViewMainService } from '../../platform/browserView/electron-main/browserViewMainService.js';
@@ -1232,6 +1235,7 @@ export class CodeApplication extends Disposable {
 		services.set(IEncryptionMainService, new SyncDescriptor(EncryptionMainService));
 
 		// Lens engine
+		services.set(ILensLiteLlmConfigService, new SyncDescriptor(LensLiteLlmConfigMainService));
 		services.set(ILensEngineMainService, new SyncDescriptor(LensEngineMainService));
 
 		// Browser View
@@ -1404,6 +1408,27 @@ export class CodeApplication extends Disposable {
 		// Encryption
 		const encryptionChannel = ProxyChannel.fromService(accessor.get(IEncryptionMainService), disposables);
 		mainProcessElectronServer.registerChannel('encryption', encryptionChannel);
+
+		// Lens LiteLLM config
+		// Exposed through a narrow object, not the service instance directly: the service also
+		// carries readApiKey() for the engine's own in-process use, which must never be reachable
+		// from the renderer over this channel.
+		const lensLiteLlmConfigService = accessor.get(ILensLiteLlmConfigService);
+		const lensLiteLlmConfigChannel = ProxyChannel.fromService({
+			_serviceBrand: undefined,
+			setApiKey: (apiKey: string | undefined) => lensLiteLlmConfigService.setApiKey(apiKey),
+			hasApiKey: () => lensLiteLlmConfigService.hasApiKey(),
+			listModels: (baseUrl: string) => lensLiteLlmConfigService.listModels(baseUrl),
+		} satisfies ILensLiteLlmConfigService, disposables);
+		mainProcessElectronServer.registerChannel('lensLiteLlmConfig', lensLiteLlmConfigChannel);
+
+		// Lens engine (restart only; start/stop stay lifecycle-owned, not renderer-triggerable)
+		const lensEngineService = accessor.get(ILensEngineMainService);
+		const lensEngineChannel = ProxyChannel.fromService({
+			_serviceBrand: undefined,
+			restart: async () => { await lensEngineService.restart(); },
+		} satisfies ILensEngineRestartService, disposables);
+		mainProcessElectronServer.registerChannel('lensEngine', lensEngineChannel);
 
 		// Browser View
 		const browserViewChannel = ProxyChannel.fromService(accessor.get(IBrowserViewMainService), disposables);
