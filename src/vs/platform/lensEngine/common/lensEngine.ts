@@ -4,6 +4,8 @@ export interface ILensEngineRuntimeState {
 	readonly opencodeUrl: string;
 	readonly opencodeUsername: string;
 	readonly opencodePassword: string;
+	/** The model Lens Chat should start with when the user has not picked one. */
+	readonly defaultModel?: string;
 }
 
 /** User-editable opencode settings layered on top of the locked Lens config. */

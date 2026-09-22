@@ -2,6 +2,7 @@ export interface ILensEngineRuntime {
 	readonly opencodeUrl: string;
 	readonly opencodeUsername: string;
 	readonly opencodePassword: string;
+	readonly defaultModel?: string;
 }
 
 export interface ILensUserConfig {

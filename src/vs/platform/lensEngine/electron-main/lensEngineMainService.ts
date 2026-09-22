@@ -57,6 +57,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	private restarts = 0;
 	private disposed = false;
 	private lastError: string | undefined;
+	private defaultModel: string | undefined;
 	private readonly userConfigFile: string;
 	private readonly egressFile: string;
 
@@ -94,7 +95,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	}
 
 	getRuntimeState(): ILensEngineRuntimeState | undefined {
-		return this.info ? { opencodeUrl: this.info.opencodeUrl, opencodeUsername: this.info.username, opencodePassword: this.info.password } : undefined;
+		return this.info ? { opencodeUrl: this.info.opencodeUrl, opencodeUsername: this.info.username, opencodePassword: this.info.password, defaultModel: this.defaultModel } : undefined;
 	}
 
 	async getUserConfig(): Promise<ILensUserOpencodeConfig> {
@@ -150,6 +151,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		const password = randomBytes(24).toString('hex');
 		const info: ILensEngineInfo = { opencodeUrl: `http://127.0.0.1:${port}`, username: ENGINE_USERNAME, password };
 		const userConfig = await this.getUserConfig();
+		this.defaultModel = `lens/${chooseDefaultModel(models).id}`;
 		this.spawnEngine(opencodeRoot, port, password, facade, models, userConfig);
 		await waitForReady(info);
 		this.info = info;
@@ -231,8 +233,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 }
 
 function engineConfig(facade: ILensFacadeAddress, models: ILensUpstreamModel[]) {
-	const preferred = process.env.LENS_DEFAULT_MODEL;
-	const defaultModel = models.find(model => model.id === preferred) ?? models[0];
+	const defaultModel = chooseDefaultModel(models);
 	return {
 		$schema: 'https://opencode.ai/config.json',
 		enabled_providers: ['lens'],
@@ -349,4 +350,29 @@ function mergeUserConfig(managed: Record<string, unknown>, user: ILensUserOpenco
 
 function hasLocalMcp(user: ILensUserOpencodeConfig): boolean {
 	return Object.values(user.mcp ?? {}).some(server => !!server && typeof server === 'object' && (server as { type?: unknown }).type === 'local');
+}
+
+/** LENS_DEFAULT_MODEL when set, otherwise the newest model: by release date, then by the version in its name. */
+function chooseDefaultModel(models: ILensUpstreamModel[]): ILensUpstreamModel {
+	const preferred = models.find(model => model.id === process.env.LENS_DEFAULT_MODEL);
+	if (preferred) {
+		return preferred;
+	}
+	return [...models].sort((a, b) => (b.created ?? 0) - (a.created ?? 0) || compareVersions(versionOf(b.id), versionOf(a.id)))[0];
+}
+
+function versionOf(id: string): number[] {
+	// First version-like number in the model's own name, e.g. 3.1 in "gemini/gemini-3.1-flash-lite".
+	const match = /(?:^|[-_/])[a-z]*?(\d+(?:\.\d+)*)/i.exec(id.slice(id.indexOf('/') + 1));
+	return match ? match[1].split('.').map(Number) : [];
+}
+
+function compareVersions(a: number[], b: number[]): number {
+	for (let index = 0; index < Math.max(a.length, b.length); index++) {
+		const difference = (a[index] ?? 0) - (b[index] ?? 0);
+		if (difference) {
+			return difference;
+		}
+	}
+	return 0;
 }

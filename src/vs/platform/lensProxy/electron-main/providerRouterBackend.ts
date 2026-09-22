@@ -91,7 +91,8 @@ export async function fetchProviderModels(provider: ILensResolvedProvider): Prom
 		// Providers reject requests whose max_tokens exceed their limit, so pass on whatever limits they publish.
 		const contextWindow = positive(model.context_window) ?? positive(model.context_length) ?? positive(model.max_input_tokens);
 		const maxOutputTokens = positive(model.max_completion_tokens) ?? positive(model.max_output_tokens) ?? positive(model.top_provider?.max_completion_tokens);
-		return [{ id, name: model.display_name ?? model.name ?? id, vision, contextWindow, maxOutputTokens }];
+		const created = positive(model.created) ?? (model.created_at ? positive(Date.parse(model.created_at) / 1000) : undefined);
+		return [{ id, name: model.display_name ?? model.name ?? id, vision, contextWindow, maxOutputTokens, created }];
 	});
 }
 
@@ -144,6 +145,8 @@ interface IProviderModelEntry {
 	readonly max_completion_tokens?: number;
 	readonly max_output_tokens?: number;
 	readonly top_provider?: { readonly max_completion_tokens?: number };
+	readonly created?: number;
+	readonly created_at?: string;
 }
 
 function positive(value: unknown): number | undefined {

@@ -4,6 +4,8 @@ export interface ILensUpstreamModel {
 	readonly vision: boolean;
 	readonly contextWindow?: number;
 	readonly maxOutputTokens?: number;
+	/** Release time in epoch seconds, when the provider publishes one. */
+	readonly created?: number;
 }
 
 export interface ILensUpstreamRequest {

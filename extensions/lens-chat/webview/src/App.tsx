@@ -75,6 +75,8 @@ function ChatApp() {
 	const [agent, setAgent] = createSignal('build');
 	// Start from the model the user last picked, so a reload does not silently switch to the provider's first model.
 	const [model, setModel] = createSignal(readSavedState().model ?? DEFAULT_MODEL);
+	// The engine's pick (its newest model) for when the user has not chosen one yet.
+	const [engineDefault, setEngineDefault] = createSignal<string | undefined>();
 	// A failed reply already shows its error card; the banner would repeat it. Retries have no card, so they stay.
 	const errorShownInConversation = createMemo(() => !error().startsWith('Retrying') && !!messages().at(-1)?.info?.error);
 	const [effort, setEffort] = createSignal('high');
@@ -112,7 +114,7 @@ function ChatApp() {
 		if (!choices.length) {
 			return;
 		}
-		const next = resolvePreferredModel(choices, model());
+		const next = resolvePreferredModel(choices, model(), engineDefault()?.replace(/^lens\//, ''));
 		if (next && next !== model()) {
 			setModel(next);
 		}
@@ -125,6 +127,7 @@ function ChatApp() {
 			if (data.type === 'boot') {
 				setBooted(true);
 				setEngine(!!data.runtime);
+				setEngineDefault(typeof data.runtime?.defaultModel === 'string' ? data.runtime.defaultModel : undefined);
 				if (data.runtime) {
 					vscode.postMessage({ type: 'agent.list' });
 					vscode.postMessage({ type: 'provider.list' });
