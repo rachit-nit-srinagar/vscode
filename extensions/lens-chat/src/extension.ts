@@ -4,7 +4,6 @@
 
 import * as vscode from 'vscode';
 import { promises as fs } from 'fs';
-import { tmpdir } from 'os';
 import { join } from 'path';
 
 interface LensMessage {
@@ -23,6 +22,8 @@ interface LensSession {
 }
 
 class LensChatViewProvider implements vscode.WebviewViewProvider {
+	constructor(private readonly discoveryFile: string) { }
+
 	private view: vscode.WebviewView | undefined;
 	private session: LensSession | undefined;
 	private messages: LensMessage[] = [];
@@ -79,8 +80,19 @@ class LensChatViewProvider implements vscode.WebviewViewProvider {
 
 	private async engine(): Promise<LensEngine | undefined> {
 		try {
-			const discovery = JSON.parse(await fs.readFile(join(tmpdir(), `lens-engine-${process.ppid}.json`), 'utf8')) as Partial<LensEngine>;
+			// Only trust a discovery file that we own and nobody else can read or write.
+			const stat = await fs.stat(this.discoveryFile);
+			if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
+				return undefined;
+			}
+			if (process.platform !== 'win32' && (stat.mode & 0o077) !== 0) {
+				return undefined;
+			}
+			const discovery = JSON.parse(await fs.readFile(this.discoveryFile, 'utf8')) as Partial<LensEngine>;
 			if (!discovery.opencodeUrl || !discovery.username || !discovery.password) {
+				return undefined;
+			}
+			if (new URL(discovery.opencodeUrl).hostname !== '127.0.0.1') {
 				return undefined;
 			}
 			return { opencodeUrl: discovery.opencodeUrl.replace(/\/+$/, ''), username: discovery.username, password: discovery.password };
@@ -117,7 +129,8 @@ class LensChatViewProvider implements vscode.WebviewViewProvider {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-	const provider = new LensChatViewProvider();
+	// globalStorageUri is <userData>/User/globalStorage/<extension id>; the engine writes to <userData>.
+	const provider = new LensChatViewProvider(join(context.globalStorageUri.fsPath, '..', '..', '..', 'lens-engine.json'));
 	context.subscriptions.push(vscode.window.registerWebviewViewProvider('lens-chat.view', provider));
 	context.subscriptions.push(vscode.commands.registerCommand('lens-chat.open', () => vscode.commands.executeCommand('workbench.view.extension.lens')));
 }
