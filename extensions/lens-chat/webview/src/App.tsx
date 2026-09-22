@@ -31,7 +31,7 @@ import { applyChatEvent, eventSessionID } from './chat/streamEvents';
 import { ExtensionsView } from './settings/ExtensionsView';
 import { ProvidersView } from './settings/ProvidersView';
 import { ProviderErrorView } from './chat/ProviderError';
-import { vscode } from './vscode';
+import { readSavedState, saveState, vscode } from './vscode';
 
 type Tab = { id: string; title: string };
 type SlashItem = { kind: 'command' | 'skill'; name: string; description?: string };
@@ -73,7 +73,10 @@ function ChatApp() {
 	const [agents, setAgents] = createSignal<AgentInfo[]>([]);
 	const [providers, setProviders] = createSignal<unknown>({});
 	const [agent, setAgent] = createSignal('build');
-	const [model, setModel] = createSignal(DEFAULT_MODEL);
+	// Start from the model the user last picked, so a reload does not silently switch to the provider's first model.
+	const [model, setModel] = createSignal(readSavedState().model ?? DEFAULT_MODEL);
+	// A failed reply already shows its error card; the banner would repeat it. Retries have no card, so they stay.
+	const errorShownInConversation = createMemo(() => !error().startsWith('Retrying') && !!messages().at(-1)?.info?.error);
 	const [effort, setEffort] = createSignal('high');
 	const [picker, setPicker] = createSignal<PickerKind | null>(null);
 	const [modelPanelView, setModelPanelView] = createSignal<'main' | 'effort' | 'model'>('main');
@@ -791,7 +794,7 @@ function ChatApp() {
 						</Show>
 					</div>
 				</Show>
-				<Show when={error()}>
+				<Show when={error() && !errorShownInConversation()}>
 					<div class="lens-error"><ProviderErrorView text={error()} /></div>
 				</Show>
 				<div class="lens-composer">
@@ -970,6 +973,7 @@ function ChatApp() {
 																class={`lens-picker-item lens-picker-model-item ${model() === choice.value ? 'selected' : ''}`}
 																onClick={() => {
 																	setModel(choice.value);
+																	saveState({ model: choice.value });
 																	setModelPanelView('main');
 																}}
 															>

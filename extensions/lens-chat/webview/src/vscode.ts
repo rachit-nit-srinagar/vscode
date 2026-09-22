@@ -1,4 +1,4 @@
-declare function acquireVsCodeApi(): { postMessage(data: unknown): void };
+declare function acquireVsCodeApi(): { postMessage(data: unknown): void; getState(): unknown; setState(state: unknown): void };
 
 const VSCODE_API_KEY = '__lensVsCodeApi';
 
@@ -18,4 +18,22 @@ export const vscode: VsCodeApi = {
 	postMessage(data: unknown) {
 		getVsCodeApi().postMessage(data);
 	},
+	getState() {
+		return getVsCodeApi().getState();
+	},
+	setState(state: unknown) {
+		getVsCodeApi().setState(state);
+	},
 };
+
+type SavedState = { model?: string };
+
+/** Webview state survives reloads of the panel and the window. */
+export function readSavedState(): SavedState {
+	const state = vscode.getState();
+	return state && typeof state === 'object' ? state as SavedState : {};
+}
+
+export function saveState(patch: SavedState): void {
+	vscode.setState({ ...readSavedState(), ...patch });
+}
