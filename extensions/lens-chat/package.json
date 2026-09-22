@@ -1,0 +1,51 @@
+{
+  "name": "lens-chat",
+  "displayName": "Lens Chat",
+  "description": "Chat with the Lens coding assistant.",
+  "version": "0.0.1",
+  "publisher": "vscode",
+  "license": "MIT",
+  "engines": { "vscode": "^1.100.0" },
+  "categories": ["Other"],
+  "extensionKind": ["ui", "workspace"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onView:lens-chat.view", "onCommand:lens-chat.open"],
+  "contributes": {
+    "commands": [
+      { "command": "lens-chat.open", "title": "Lens: Open Chat", "category": "Lens" }
+    ],
+    "configuration": {
+      "title": "Lens Chat",
+      "properties": {
+        "lens.engine.url": {
+          "type": "string",
+          "scope": "application",
+          "description": "Loopback URL of the Lens OpenCode engine."
+        },
+        "lens.engine.token": {
+          "type": "string",
+          "scope": "application",
+          "description": "Loopback bearer token for the Lens engine.",
+          "doNotSuggest": true
+        }
+      }
+    },
+    "viewsContainers": {
+      "secondarySideBar": [
+        { "id": "lens", "title": "Lens", "icon": "$(sparkle)" }
+      ]
+    },
+    "views": {
+      "lens": [
+        { "id": "lens-chat.view", "name": "Chat", "type": "webview" }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "node ../../node_modules/typescript/bin/tsc --project ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "24.x",
+    "@types/vscode": "^1.100.0"
+  }
+}
