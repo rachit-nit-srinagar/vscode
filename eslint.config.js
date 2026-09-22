@@ -3009,4 +3009,15 @@ export default defineConfig(
 		rules: {
 			'local/code-no-new-javascript-files': 'error',
 		},
+	},
+	// Lens-owned files are not Microsoft code and carry their own header.
+	{
+		files: [
+			'src/vs/platform/lensEngine/**',
+			'src/vs/platform/lensProxy/**',
+			'extensions/lens-chat/**',
+		],
+		rules: {
+			'header/header': 'off',
+		},
 	});
