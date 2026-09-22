@@ -67,3 +67,24 @@ describe('applyChatEvent', () => {
 		})).toBe('s2');
 	});
 });
+
+describe('applyChatEvent optimistic prompts', () => {
+	const optimistic: ChatMessage[] = [{ info: { role: 'user' }, parts: [{ type: 'text', text: 'hi' }] }];
+
+	it('adopts the local prompt when the server message arrives first', () => {
+		const adopted = applyChatEvent(optimistic, { type: 'message.updated', properties: { info: { id: 'msg_u', role: 'user' } } })!;
+		const merged = applyChatEvent(adopted, { type: 'message.part.updated', properties: { part: { id: 'prt_1', messageID: 'msg_u', type: 'text', text: 'hi' } } })!;
+		expect(merged).toEqual([{ info: { role: 'user', id: 'msg_u' }, parts: [{ id: 'prt_1', type: 'text', text: 'hi' }] }]);
+	});
+
+	it('adopts the local prompt when its text part arrives first', () => {
+		const merged = applyChatEvent(optimistic, { type: 'message.part.updated', properties: { part: { id: 'prt_1', messageID: 'msg_u', type: 'text', text: 'hi' } } })!;
+		expect(merged).toEqual([{ info: { role: 'user', id: 'msg_u' }, parts: [{ id: 'prt_1', type: 'text', text: 'hi' }] }]);
+	});
+
+	it('still adds assistant replies as new messages', () => {
+		const merged = applyChatEvent(optimistic, { type: 'message.part.updated', properties: { part: { id: 'prt_2', messageID: 'msg_a', type: 'text', text: 'Hello!' } } })!;
+		expect(merged.length).toBe(2);
+		expect(merged[1]).toEqual({ info: { id: 'msg_a', role: 'assistant' }, parts: [{ id: 'prt_2', type: 'text', text: 'Hello!' }] });
+	});
+});

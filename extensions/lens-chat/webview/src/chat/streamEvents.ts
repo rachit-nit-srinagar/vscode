@@ -100,16 +100,25 @@ function applyPartDelta(messages: ChatMessage[], delta: PartDelta): ChatMessage[
 function upsertPart(messages: ChatMessage[], part: ChatPart & { messageID?: string }): ChatMessage[] {
 	const messageID = part.messageID;
 	const chatPart = toChatPart(part);
-	const index = findMessageIndex(messages, messageID);
+	let index = findMessageIndex(messages, messageID);
 	if (index < 0) {
 		if (!messageID) {
 			return messages;
 		}
-		return [...messages, { info: { id: messageID, role: 'assistant' }, parts: [chatPart] }];
+		const optimistic = findOptimisticUserMessage(messages, chatPart);
+		if (optimistic < 0) {
+			return [...messages, { info: { id: messageID, role: 'assistant' }, parts: [chatPart] }];
+		}
+		messages = replaceMessage(messages, optimistic, { ...messages[optimistic]!, info: { ...messages[optimistic]!.info, id: messageID } });
+		index = optimistic;
 	}
 	const message = messages[index]!;
 	const parts = [...(message.parts ?? [])];
-	const partIndex = parts.findIndex(existing => existing.id && existing.id === chatPart.id);
+	let partIndex = parts.findIndex(existing => existing.id && existing.id === chatPart.id);
+	if (partIndex < 0) {
+		// The server's copy of a part the chat showed optimistically replaces it instead of repeating it.
+		partIndex = parts.findIndex(existing => !existing.id && samePart(existing, chatPart));
+	}
 	if (partIndex < 0) {
 		parts.push(chatPart);
 	} else {
@@ -124,6 +133,11 @@ function upsertMessage(messages: ChatMessage[], info: NonNullable<ChatMessage['i
 	}
 	const index = findMessageIndex(messages, info.id);
 	if (index < 0) {
+		// The user's own prompt is already on screen (sent optimistically); adopt it rather than adding a copy.
+		const optimistic = info.role === 'user' ? findOptimisticUserMessage(messages) : -1;
+		if (optimistic >= 0) {
+			return replaceMessage(messages, optimistic, { ...messages[optimistic]!, info: { ...messages[optimistic]!.info, ...info } });
+		}
 		return [...messages, { info, parts: [] }];
 	}
 	const message = messages[index]!;
@@ -140,6 +154,33 @@ function mergePart(existing: ChatPart, incoming: ChatPart): ChatPart {
 function toChatPart(part: ChatPart & { messageID?: string }): ChatPart {
 	const { messageID: _messageID, ...rest } = part;
 	return rest;
+}
+
+/** Latest user message added locally before the server assigned it an id, optionally holding `part`. */
+function findOptimisticUserMessage(messages: ChatMessage[], part?: ChatPart): number {
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index]!;
+		if (message.info?.id) {
+			continue;
+		}
+		if ((message.info?.role ?? message.role) !== 'user') {
+			continue;
+		}
+		if (!part || (message.parts ?? []).some(existing => !existing.id && samePart(existing, part))) {
+			return index;
+		}
+	}
+	return -1;
+}
+
+function samePart(local: ChatPart, remote: ChatPart): boolean {
+	if (local.type !== remote.type) {
+		return false;
+	}
+	if (local.type === 'text') {
+		return (local.text ?? '').trim() === (remote.text ?? '').trim();
+	}
+	return !!local.url && local.url === remote.url;
 }
 
 function findMessageIndex(messages: ChatMessage[], messageID?: string): number {
