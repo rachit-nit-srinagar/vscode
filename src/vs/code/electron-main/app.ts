@@ -37,6 +37,7 @@ import { DiagnosticsMainService, IDiagnosticsMainService } from '../../platform/
 import { DialogMainService, IDialogMainService } from '../../platform/dialogs/electron-main/dialogMainService.js';
 import { IEncryptionMainService } from '../../platform/encryption/common/encryptionService.js';
 import { EncryptionMainService } from '../../platform/encryption/electron-main/encryptionMainService.js';
+import { ILensEngineMainService, LensEngineMainService } from '../../platform/lensEngine/electron-main/lensEngineMainService.js';
 import { ipcBrowserViewChannelName } from '../../platform/browserView/common/browserView.js';
 import { ipcBrowserViewGroupChannelName } from '../../platform/browserView/common/browserViewGroup.js';
 import { BrowserViewMainService, IBrowserViewMainService } from '../../platform/browserView/electron-main/browserViewMainService.js';
@@ -793,6 +794,15 @@ export class CodeApplication extends Disposable {
 		await appInstantiationService.invokeFunction(accessor => this.openFirstWindow(accessor, initialProtocolUrls));
 		mark('code/didOpenFirstWindow');
 
+		// Lens engine: opt out with LENS_ENGINE=0
+		if (process.env.LENS_ENGINE !== '0') {
+			appInstantiationService.invokeFunction(accessor => {
+				const lensEngine = accessor.get(ILensEngineMainService);
+				Event.once(this.lifecycleMainService.onWillShutdown)(() => lensEngine.stop());
+				void lensEngine.start();
+			});
+		}
+
 		// Signal phase: after window open
 		this.lifecycleMainService.phase = LifecycleMainPhase.AfterWindowOpen;
 
@@ -1220,6 +1230,9 @@ export class CodeApplication extends Disposable {
 
 		// Encryption
 		services.set(IEncryptionMainService, new SyncDescriptor(EncryptionMainService));
+
+		// Lens engine
+		services.set(ILensEngineMainService, new SyncDescriptor(LensEngineMainService));
 
 		// Browser View
 		services.set(IBrowserViewMainService, new SyncDescriptor(BrowserViewMainService, undefined, false /* proxied to other processes */));
