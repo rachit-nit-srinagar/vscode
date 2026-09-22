@@ -2233,3 +2233,149 @@ button.lens-picker-row:focus-visible {
 .lens-empty .lens-conn-primary {
 	margin-top: 8px;
 }
+
+.lens-providers {
+	overflow-y: auto;
+}
+
+.lens-prov-pad {
+	padding: 0 12px;
+}
+
+.lens-prov-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 10px 12px 6px;
+	font-size: 12px;
+}
+
+.lens-prov-list {
+	list-style: none;
+	margin: 0;
+	padding: 4px 8px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.lens-prov-card {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+	border-radius: 6px;
+	background: var(--vscode-editorWidget-background, transparent);
+}
+
+/* Brand logos are drawn for light backgrounds; a white tile keeps them legible in every theme. */
+.lens-prov-logo {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 6px;
+	background: #fff;
+	overflow: hidden;
+}
+
+.lens-prov-logo img {
+	max-width: 24px;
+	max-height: 24px;
+	object-fit: contain;
+}
+
+.lens-prov-text {
+	flex: 1;
+	min-width: 0;
+}
+
+.lens-prov-name {
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.lens-prov-sub {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-prov-actions {
+	display: flex;
+	gap: 2px;
+}
+
+.lens-prov-icon {
+	width: 26px;
+	height: 26px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-icon-foreground, var(--vscode-foreground));
+	cursor: pointer;
+}
+
+.lens-prov-icon:hover:not(:disabled) {
+	background: var(--vscode-toolbar-hoverBackground);
+}
+
+.lens-prov-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 12px 16px;
+}
+
+.lens-prov-back {
+	align-self: flex-start;
+	border: 0;
+	background: transparent;
+	color: var(--vscode-textLink-foreground);
+	padding: 0;
+	font: inherit;
+	cursor: pointer;
+}
+
+.lens-prov-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 6px 0 2px;
+}
+
+.lens-prov-title {
+	margin: 0;
+	font-size: 14px;
+}
+
+.lens-prov-instructions {
+	font-size: 12px;
+	color: var(--vscode-descriptionForeground);
+	overflow-wrap: anywhere;
+}
+
+.lens-prov-instructions ol,
+.lens-prov-instructions ul {
+	padding-left: 18px;
+	margin: 4px 0;
+}
+
+.lens-prov-instructions p {
+	margin: 4px 0;
+}
+
+.lens-prov-textarea {
+	min-height: 72px;
+	resize: vertical;
+	font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.lens-prov-models-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	margin-top: 10px;
+}

@@ -9,6 +9,8 @@ export interface ILensUpstreamModel {
 export interface ILensUpstreamRequest {
 	readonly url: string;
 	readonly headers: Record<string, string>;
+	/** Model id to send upstream (routers strip their provider prefix). */
+	readonly model: string;
 }
 
 /**
@@ -18,5 +20,6 @@ export interface ILensUpstreamRequest {
 export interface ILensLlmBackend {
 	readonly id: string;
 	listModels(): Promise<ILensUpstreamModel[]>;
-	chatCompletions(): ILensUpstreamRequest;
+	/** Resolves where a chat completion for `model` goes. Throws for unknown models. */
+	chatCompletions(model: string): ILensUpstreamRequest;
 }

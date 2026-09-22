@@ -11,9 +11,8 @@ import { ILogService } from '../../log/common/log.js';
 import { IProductService } from '../../product/common/productService.js';
 import { ILensUpstreamModel } from '../../lensProxy/common/lensLlmBackend.js';
 import { LensOpenAiFacade, ILensFacadeAddress } from '../../lensProxy/electron-main/lensOpenAiFacade.js';
-import { LiteLlmBackend } from '../../lensProxy/electron-main/liteLlmBackend.js';
-import { ILensLiteLlmConfigService } from '../common/lensLiteLlmConfig.js';
-import { LensLiteLlmConfigMainService, readLensUserSettings } from './lensLiteLlmConfigMainService.js';
+import { ProviderRouterBackend } from '../../lensProxy/electron-main/providerRouterBackend.js';
+import { ILensProvidersMainService } from './lensProvidersMainService.js';
 import { ILensEngineRuntimeState, ILensUserOpencodeConfig } from '../common/lensEngine.js';
 
 export const ILensEngineMainService = createDecorator<ILensEngineMainService>('lensEngineMainService');
@@ -27,7 +26,7 @@ export interface ILensEngineInfo {
 export interface ILensEngineMainService {
 	readonly _serviceBrand: undefined;
 	start(): Promise<ILensEngineInfo | undefined>;
-	/** Stops and restarts the engine, re-reading the LiteLLM connection and model settings. */
+	/** Stops and restarts the engine, re-reading the AI provider settings. */
 	restart(): Promise<ILensEngineInfo | undefined>;
 	stop(): void;
 	getRuntimeState(): ILensEngineRuntimeState | undefined;
@@ -63,17 +62,12 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		@ILogService private readonly logService: ILogService,
 		@IProductService private readonly productService: IProductService,
 		@IEnvironmentMainService private readonly environmentMainService: IEnvironmentMainService,
-		@ILensLiteLlmConfigService lensLiteLlmConfigService: ILensLiteLlmConfigService,
+		@ILensProvidersMainService private readonly lensProvidersService: ILensProvidersMainService,
 	) {
 		super();
-		// Single main-process implementation; readApiKey() is intentionally not on the shared,
-		// IPC-exposed interface so the key never travels to the renderer.
-		this.lensLiteLlmConfigService = lensLiteLlmConfigService as LensLiteLlmConfigMainService;
 		this.userConfigFile = join(environmentMainService.userDataPath, 'lens-opencode-user.json');
 		this.egressFile = join(environmentMainService.userDataPath, 'lens-egress-extra.txt');
 	}
-
-	private readonly lensLiteLlmConfigService: LensLiteLlmConfigMainService;
 
 	start(): Promise<ILensEngineInfo | undefined> {
 		this.lastError = undefined;
@@ -86,7 +80,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	}
 
 	async restart(): Promise<ILensEngineInfo | undefined> {
-		this.logService.info('[LensEngine] restarting to pick up LiteLLM connection/model changes');
+		this.logService.info('[LensEngine] restarting to pick up AI provider changes');
 		this.teardown();
 		this.restarts = 0;
 		this.starting = undefined;
@@ -132,32 +126,23 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	}
 
 	private async doStart(): Promise<ILensEngineInfo | undefined> {
-		const settings = await readLensUserSettings(this.environmentMainService.appSettingsHome.fsPath, message => this.logService.warn(`[LensEngine] ${message}`));
-		const baseUrl = (settings.baseUrl?.trim() || undefined) ?? process.env.LITELLM_BASE_URL;
-		if (!baseUrl) {
-			this.logService.warn('[LensEngine] no LiteLLM base URL configured (lens.liteLlm.baseUrl or LITELLM_BASE_URL); Lens engine not started.');
-			return undefined;
+		const providers = await this.lensProvidersService.resolveProviders();
+		if (!providers.length) {
+			throw new Error('No AI provider is set up yet. Add one under Lens → AI Providers.');
 		}
-		const apiKey = (await this.lensLiteLlmConfigService.readApiKey()) ?? process.env.LITELLM_API_KEY;
 		const opencodeRoot = process.env.LENS_OPENCODE_ROOT ?? join(this.environmentMainService.appRoot, '..', 'opencode');
 		if (!existsSync(join(opencodeRoot, 'packages', 'opencode', 'src', 'index.ts'))) {
 			throw new Error(`opencode sources not found at ${opencodeRoot} (set LENS_OPENCODE_ROOT)`);
 		}
 
-		const backend = new LiteLlmBackend(baseUrl, apiKey);
+		const backend = new ProviderRouterBackend(providers, message => this.logService.warn(message));
+		const models = await backend.listModels();
+		if (!models.length) {
+			throw new Error('None of your AI providers returned any models. Check the keys and model choices under Lens → AI Providers.');
+		}
+		this.logService.info(`[LensEngine] ${models.length} models from ${providers.map(provider => provider.config.type).join(', ')}`);
 		this.facade = new LensOpenAiFacade(backend, message => this.logService.info(message));
 		const facade = await this.facade.start();
-
-		const allModels = await backend.listModels().catch(error => {
-			this.logService.error(`[LensEngine] could not list LiteLLM models: ${error}`);
-			return [];
-		});
-		const enabledIds = settings.enabledModels?.filter(id => typeof id === 'string' && id.length > 0) ?? [];
-		const models = enabledIds.length ? allModels.filter(model => enabledIds.includes(model.id)) : allModels;
-		if (!models.length) {
-			throw new Error(enabledIds.length ? 'none of the models in lens.liteLlm.enabledModels were found on LiteLLM' : 'LiteLLM returned no models');
-		}
-		this.logService.info(`[LensEngine] ${models.length} models from LiteLLM${enabledIds.length ? ` (filtered from ${allModels.length})` : ''}`);
 
 		const port = await freePort();
 		const password = randomBytes(24).toString('hex');

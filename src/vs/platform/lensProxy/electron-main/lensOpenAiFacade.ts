@@ -60,10 +60,21 @@ export class LensOpenAiFacade {
 	}
 
 	private async forwardChat(req: IncomingMessage, res: ServerResponse): Promise<void> {
-		const body = await readBody(req);
+		let payload: Record<string, unknown>;
+		try {
+			payload = JSON.parse((await readBody(req)).toString('utf8'));
+		} catch {
+			return this.fail(res, 400, 'invalid JSON body');
+		}
+		let upstream;
+		try {
+			upstream = this.backend.chatCompletions(String(payload.model ?? ''));
+		} catch (error) {
+			return this.fail(res, 404, error instanceof Error ? error.message : String(error));
+		}
+		const body = new TextEncoder().encode(JSON.stringify({ ...payload, model: upstream.model }));
 		const abort = new AbortController();
 		res.on('close', () => abort.abort());
-		const upstream = this.backend.chatCompletions();
 
 		let response: Response | undefined;
 		for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -71,7 +82,7 @@ export class LensOpenAiFacade {
 				response = await fetch(upstream.url, {
 					method: 'POST',
 					headers: { ...upstream.headers, 'content-type': 'application/json', accept: req.headers.accept ?? '*/*' },
-					body: new Uint8Array(body),
+					body,
 					signal: abort.signal,
 				});
 			} catch (error) {

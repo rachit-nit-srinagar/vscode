@@ -42,8 +42,8 @@ export class LiteLlmBackend implements ILensLlmBackend {
 			.flatMap(model => model.id ? [{ id: model.id, name: model.id, vision: false }] : []);
 	}
 
-	chatCompletions(): ILensUpstreamRequest {
-		return { url: `${this.baseUrl}/v1/chat/completions`, headers: this.authHeaders() };
+	chatCompletions(model: string): ILensUpstreamRequest {
+		return { url: `${this.baseUrl}/v1/chat/completions`, headers: this.authHeaders(), model };
 	}
 
 	private authHeaders(): Record<string, string> {

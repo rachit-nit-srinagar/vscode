@@ -29,12 +29,13 @@ import {
 } from './chat/attachments';
 import { applyChatEvent, eventSessionID } from './chat/streamEvents';
 import { ExtensionsView } from './settings/ExtensionsView';
-import { ConnectionView } from './settings/ConnectionView';
+import { ProvidersView } from './settings/ProvidersView';
 import { vscode } from './vscode';
 
 type Tab = { id: string; title: string };
 type SlashItem = { kind: 'command' | 'skill'; name: string; description?: string };
 type Attachment = { type: 'file'; mime: string; url: string; filename?: string };
+type PendingPrompt = { text: string; parts: Array<{ type: 'text'; text: string } | Attachment> };
 type PermissionRequest = { id: string; sessionID?: string; permission?: string; patterns?: string[] };
 type AgentInfo = { name?: string; mode?: string; hidden?: boolean };
 type HistoryItem = { id: string; title?: string; time?: { updated?: number; archived?: number } };
@@ -46,8 +47,8 @@ const EFFORTS = ['none', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 type PickerKind = 'agent' | 'model';
 
 export function App() {
-	if (view === 'connection') {
-		return <ConnectionView />;
+	if (view === 'providers') {
+		return <ProvidersView />;
 	}
 	if (view === 'extensions') {
 		onMount(() => vscode.postMessage({ type: 'ready' }));
@@ -595,7 +596,7 @@ function ChatApp() {
 			<Show when={booted() && !engine()}>
 				<div class="lens-status">
 					<p>Lens isn't connected to a model yet.</p>
-					<button class="lens-conn-primary" onClick={() => vscode.postMessage({ type: 'connection.open' })}>Open Connection</button>
+					<button class="lens-conn-primary" onClick={() => vscode.postMessage({ type: 'providers.open' })}>Set Up AI Providers</button>
 				</div>
 			</Show>
 			<Show when={booted() && engine()}>

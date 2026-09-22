@@ -14,7 +14,7 @@ export function activate(context: ExtensionContext): void {
 		workspace.registerTextDocumentContentProvider(LENS_DIFF_SCHEME, diffs),
 		host.insertDecoration,
 		window.registerWebviewViewProvider('lens.chat', new LensWebviewView(host, 'chat'), { webviewOptions: { retainContextWhenHidden: true } }),
-		window.registerWebviewViewProvider('lens.connection', new LensWebviewView(host, 'connection'), { webviewOptions: { retainContextWhenHidden: true } }),
+		window.registerWebviewViewProvider('lens.providers', new LensWebviewView(host, 'providers'), { webviewOptions: { retainContextWhenHidden: true } }),
 		window.registerWebviewViewProvider('lens.extensions', new LensWebviewView(host, 'extensions'), { webviewOptions: { retainContextWhenHidden: true } }),
 		commands.registerCommand('lens.openChat', async () => {
 			await commands.executeCommand('lens.chat.focus');
@@ -35,7 +35,7 @@ class LensWebviewView implements WebviewViewProvider {
 
 	constructor(
 		private readonly host: LensChatHost,
-		private readonly view: 'chat' | 'connection' | 'extensions',
+		private readonly view: 'chat' | 'providers' | 'extensions',
 	) { }
 
 	resolveWebviewView(webviewView: WebviewView): void {
@@ -116,29 +116,26 @@ class LensChatHost {
 			await this.boot(webview);
 			return;
 		}
-		if (message.type === 'connection.open') {
-			await commands.executeCommand('lens.connection.focus');
+		if (message.type === 'providers.open') {
+			await commands.executeCommand('lens.providers.focus');
 			return;
 		}
-		if (message.type === 'connection.get') {
-			const data = await commands.executeCommand('_lens.connection.get');
+		if (message.type === 'providers.get' || message.type === 'providers.fetchModels') {
+			const data = message.type === 'providers.get'
+				? await commands.executeCommand('_lens.providers.get')
+				: await commands.executeCommand('_lens.providers.fetchModels', message.provider);
 			this.post(webview, { type: 'result', requestType: message.type, data });
 			return;
 		}
-		if (message.type === 'connection.save' || message.type === 'connection.setModels') {
-			const data = message.type === 'connection.save'
-				? await commands.executeCommand('_lens.connection.save', { baseUrl: message.baseUrl, apiKey: message.apiKey, clearApiKey: message.clearApiKey })
-				: await commands.executeCommand('_lens.connection.setModels', message.ids);
+		if (message.type === 'providers.save' || message.type === 'providers.remove') {
+			const data = message.type === 'providers.save'
+				? await commands.executeCommand('_lens.providers.save', { config: message.config, apiKey: message.apiKey, clearApiKey: message.clearApiKey })
+				: await commands.executeCommand('_lens.providers.remove', message.provider);
 			this.post(webview, { type: 'result', requestType: message.type, data });
 			// The engine restarted; let every open Lens view reconnect.
 			for (const other of this.webviews) {
 				void this.boot(other);
 			}
-			return;
-		}
-		if (message.type === 'connection.models') {
-			const data = await commands.executeCommand('_lens.connection.listModels');
-			this.post(webview, { type: 'result', requestType: message.type, data });
 			return;
 		}
 		if (message.type === 'file.open') {
@@ -147,7 +144,7 @@ class LensChatHost {
 		}
 		const client = this.client;
 		if (!client) {
-			throw new Error('Lens engine is not running. Set up the model connection under Lens → Connection.');
+			throw new Error('Lens engine is not running. Add an AI provider under Lens → AI Providers.');
 		}
 
 		switch (message.type) {
@@ -428,7 +425,7 @@ class LensChatHost {
 		this.post(webview, { type: 'boot', runtime, workspace: workspaceFolder, userConfig });
 	}
 
-	renderHtml(webview: Webview, view: 'chat' | 'connection' | 'extensions'): string {
+	renderHtml(webview: Webview, view: 'chat' | 'providers' | 'extensions'): string {
 		const scriptUri = webview.asWebviewUri(Uri.joinPath(this.context.extensionUri, 'media', 'webview', 'index.js'));
 		const nonce = randomBytes(16).toString('base64');
 		return `<!DOCTYPE html>
@@ -439,7 +436,7 @@ class LensChatHost {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 </head>
 <body style="margin:0;height:100%;color:var(--vscode-foreground);background:var(--vscode-sideBar-background);font-family:var(--vscode-font-family);">
-	<div id="root" data-view="${view}" style="height:100%;"></div>
+	<div id="root" data-view="${view}" data-media="${webview.asWebviewUri(Uri.joinPath(this.context.extensionUri, 'media'))}" style="height:100%;"></div>
 	<script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

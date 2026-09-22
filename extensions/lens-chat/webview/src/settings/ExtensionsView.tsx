@@ -111,7 +111,7 @@ export function ExtensionsView() {
 			<Show when={booted() && !engine()}>
 				<div class="lens-empty">
 					<p>Lens isn't connected to a model yet.</p>
-					<button class="lens-conn-primary" onClick={() => vscode.postMessage({ type: 'connection.open' })}>Open Connection</button>
+					<button class="lens-conn-primary" onClick={() => vscode.postMessage({ type: 'providers.open' })}>Set Up AI Providers</button>
 				</div>
 			</Show>
 			<Show when={booted() && engine()}>

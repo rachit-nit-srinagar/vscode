@@ -14,7 +14,7 @@
  "activationEvents": [
   "onStartupFinished",
   "onView:lens.chat",
-  "onView:lens.connection",
+  "onView:lens.providers",
   "onView:lens.extensions"
  ],
  "extensionKind": [
@@ -68,8 +68,8 @@
    ],
    "lens": [
     {
-     "id": "lens.connection",
-     "name": "%view.connection%",
+     "id": "lens.providers",
+     "name": "%view.providers%",
      "type": "webview",
      "icon": "media/lens.svg"
     },

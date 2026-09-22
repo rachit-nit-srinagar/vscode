@@ -57,7 +57,7 @@ import './services/extensionManagement/electron-browser/extensionManagementServi
 import './services/mcp/electron-browser/mcpGalleryManifestService.js';
 import './services/mcp/electron-browser/mcpWorkbenchManagementService.js';
 import './services/encryption/electron-browser/encryptionService.js';
-import './services/lensEngine/electron-browser/lensLiteLlmConfigService.js';
+import './services/lensEngine/electron-browser/lensProvidersService.js';
 import './services/lensEngine/electron-browser/lensEngineRestartService.js';
 import './services/lensEngine/electron-browser/lensEngineService.js';
 import './services/imageResize/electron-browser/imageResizeService.js';
