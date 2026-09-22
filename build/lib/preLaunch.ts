@@ -9,9 +9,9 @@ import { promises as fs } from 'fs';
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const rootDir = path.resolve(import.meta.dirname, '..', '..');
 
-function runProcess(command: string, args: ReadonlyArray<string> = []) {
+function runProcess(command: string, args: ReadonlyArray<string> = [], cwd: string = rootDir) {
 	return new Promise<void>((resolve, reject) => {
-		const child = spawn(command, args, { cwd: rootDir, stdio: 'inherit', env: process.env, shell: process.platform === 'win32' });
+		const child = spawn(command, args, { cwd, stdio: 'inherit', env: process.env, shell: process.platform === 'win32' });
 		child.on('exit', err => !err ? resolve() : process.exit(err ?? 1));
 		child.on('error', reject);
 	});
@@ -63,10 +63,20 @@ async function ensureCompiled() {
 	}
 }
 
+// Lens Chat bundles with esbuild + Vite into dist/ and media/webview/, outside the gulp compile.
+async function ensureLensChatCompiled() {
+	const extensionPath = path.join('extensions', 'lens-chat');
+	if (await exists(path.join(extensionPath, 'dist', 'extension.js')) && await exists(path.join(extensionPath, 'media', 'webview', 'index.js'))) {
+		return;
+	}
+	await runProcess(npm, ['run', 'compile'], path.join(rootDir, extensionPath));
+}
+
 async function main() {
 	await ensureNodeModules();
 	await getElectron();
 	await ensureCompiled();
+	await ensureLensChatCompiled();
 
 	// Can't require this until after dependencies are installed
 	const { getBuiltInExtensions } = await import('./builtInExtensions.ts');
