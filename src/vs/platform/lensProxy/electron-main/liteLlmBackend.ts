@@ -1,7 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Lens. Proprietary; built on MIT-licensed opencode and VS Code.
- *--------------------------------------------------------------------------------------------*/
-
 import { ILensLlmBackend, ILensUpstreamModel, ILensUpstreamRequest } from '../common/lensLlmBackend.js';
 
 interface ILiteLlmModelInfo {

@@ -1,7 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Lens. Proprietary; built on MIT-licensed opencode and VS Code.
- *--------------------------------------------------------------------------------------------*/
-
 import type { IncomingMessage, Server, ServerResponse } from 'http';
 import { AddressInfo } from 'net';
 import { randomBytes, timingSafeEqual } from 'crypto';

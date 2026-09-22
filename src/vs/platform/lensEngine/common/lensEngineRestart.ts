@@ -1,7 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Lens. Proprietary; built on MIT-licensed opencode and VS Code.
- *--------------------------------------------------------------------------------------------*/
-
 import { createDecorator } from '../../instantiation/common/instantiation.js';
 
 export const ILensEngineRestartService = createDecorator<ILensEngineRestartService>('lensEngineRestartService');

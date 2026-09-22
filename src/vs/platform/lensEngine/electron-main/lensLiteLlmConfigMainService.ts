@@ -1,7 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Lens. Proprietary; built on MIT-licensed opencode and VS Code.
- *--------------------------------------------------------------------------------------------*/
-
 import { existsSync, promises as fs } from 'fs';
 import { parse } from '../../../base/common/jsonc.js';
 import { join } from '../../../base/common/path.js';
