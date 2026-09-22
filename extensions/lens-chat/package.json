@@ -5,31 +5,53 @@
   "version": "0.0.1",
   "publisher": "vscode",
   "license": "MIT",
-  "engines": { "vscode": "^1.100.0" },
-  "categories": ["Other"],
-  "extensionKind": ["ui", "workspace"],
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
   "main": "./out/extension.js",
-  "activationEvents": ["onView:lens-chat.view", "onCommand:lens-chat.open"],
+  "activationEvents": [
+    "onView:lens-chat.view",
+    "onCommand:lens-chat.open"
+  ],
   "contributes": {
     "commands": [
-      { "command": "lens-chat.open", "title": "Lens: Open Chat", "category": "Lens" }
+      {
+        "command": "lens-chat.open",
+        "title": "Lens: Open Chat",
+        "category": "Lens"
+      }
     ],
     "viewsContainers": {
       "secondarySideBar": [
-        { "id": "lens", "title": "Lens", "icon": "$(sparkle)" }
+        {
+          "id": "lens",
+          "title": "Lens",
+          "icon": "$(sparkle)"
+        }
       ]
     },
     "views": {
       "lens": [
-        { "id": "lens-chat.view", "name": "Chat", "type": "webview" }
+        {
+          "id": "lens-chat.view",
+          "name": "Chat",
+          "type": "webview"
+        }
       ]
     }
   },
   "scripts": {
-    "compile": "node ../../node_modules/typescript/bin/tsc --project ./tsconfig.json"
+    "compile": "gulp compile-extension:lens-chat",
+    "watch": "gulp watch-extension:lens-chat"
   },
   "devDependencies": {
-    "@types/node": "24.x",
-    "@types/vscode": "^1.100.0"
+    "@types/node": "24.x"
   }
 }
