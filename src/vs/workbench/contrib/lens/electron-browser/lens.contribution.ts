@@ -1,7 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Lens. Proprietary; built on MIT-licensed opencode and VS Code.
- *--------------------------------------------------------------------------------------------*/
-
 import { localize, localize2 } from '../../../../nls.js';
 import { ILocalizedString } from '../../../../platform/action/common/action.js';
 import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
@@ -9,6 +5,9 @@ import { ConfigurationScope, IConfigurationRegistry, Extensions as Configuration
 import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { ILensEngineRestartService } from '../../../../platform/lensEngine/common/lensEngineRestart.js';
+import { ILensEngineService, ILensUserOpencodeConfig } from '../../../../platform/lensEngine/common/lensEngine.js';
+import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
+import { ChatAIDisabledSettingId } from '../../../../platform/chat/common/chatSettings.js';
 import { ILensLiteLlmConfigService } from '../../../../platform/lensEngine/common/lensLiteLlmConfig.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
@@ -135,6 +134,73 @@ class SelectLiteLlmModelsAction extends Action2 {
 registerAction2(ConfigureLiteLlmConnectionAction);
 registerAction2(SetLiteLlmApiKeyAction);
 registerAction2(SelectLiteLlmModelsAction);
+
+// Internal commands backing the Lens Chat extension. The `_` prefix keeps them out of the Command Palette.
+class LensEngineGetRuntimeAction extends Action2 {
+	constructor() {
+		super({ id: '_lens.engine.getRuntime', title: localize2('lens.engine.getRuntime', "Get Lens Engine Runtime") });
+	}
+
+	run(accessor: ServicesAccessor) {
+		return accessor.get(ILensEngineService).getRuntimeState();
+	}
+}
+
+class LensEngineGetUserConfigAction extends Action2 {
+	constructor() {
+		super({ id: '_lens.engine.getUserConfig', title: localize2('lens.engine.getUserConfig', "Get Lens Engine User Config") });
+	}
+
+	run(accessor: ServicesAccessor) {
+		return accessor.get(ILensEngineService).getUserConfig();
+	}
+}
+
+class LensEnginePatchUserConfigAction extends Action2 {
+	constructor() {
+		super({ id: '_lens.engine.patchUserConfig', title: localize2('lens.engine.patchUserConfig', "Patch Lens Engine User Config") });
+	}
+
+	run(accessor: ServicesAccessor, partial?: ILensUserOpencodeConfig) {
+		return accessor.get(ILensEngineService).patchUserConfig(partial ?? {});
+	}
+}
+
+class LensEngineAllowEgressAction extends Action2 {
+	constructor() {
+		super({ id: '_lens.engine.allowEgress', title: localize2('lens.engine.allowEgress', "Allow Lens Egress Host") });
+	}
+
+	async run(accessor: ServicesAccessor, hostname?: string): Promise<void> {
+		if (!hostname) {
+			return;
+		}
+		const lensEngineService = accessor.get(ILensEngineService);
+		const dialogService = accessor.get(IDialogService);
+		// Confirm natively: webview content must not be able to widen network access on its own.
+		const { confirmed } = await dialogService.confirm({
+			message: localize('lens.engine.allowEgress.message', "Allow Lens to connect to {0}?", hostname),
+			detail: localize('lens.engine.allowEgress.detail', "The Lens agent will be able to send requests to this host."),
+			primaryButton: localize('lens.engine.allowEgress.allow', "Allow"),
+		});
+		if (!confirmed) {
+			throw new Error(`Connection to ${hostname} was not allowed`);
+		}
+		await lensEngineService.allowEgressHost(hostname);
+	}
+}
+
+registerAction2(LensEngineGetRuntimeAction);
+registerAction2(LensEngineGetUserConfigAction);
+registerAction2(LensEnginePatchUserConfigAction);
+registerAction2(LensEngineAllowEgressAction);
+
+// Lens Chat replaces the built-in AI chat.
+Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).registerDefaultConfigurations([{
+	overrides: {
+		[ChatAIDisabledSettingId]: true,
+	},
+}]);
 
 Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 	.registerConfiguration({

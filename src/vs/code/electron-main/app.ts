@@ -40,6 +40,7 @@ import { EncryptionMainService } from '../../platform/encryption/electron-main/e
 import { ILensEngineMainService, LensEngineMainService } from '../../platform/lensEngine/electron-main/lensEngineMainService.js';
 import { ILensLiteLlmConfigService } from '../../platform/lensEngine/common/lensLiteLlmConfig.js';
 import { ILensEngineRestartService } from '../../platform/lensEngine/common/lensEngineRestart.js';
+import { ILensEngineService, ILensUserOpencodeConfig } from '../../platform/lensEngine/common/lensEngine.js';
 import { LensLiteLlmConfigMainService } from '../../platform/lensEngine/electron-main/lensLiteLlmConfigMainService.js';
 import { ipcBrowserViewChannelName } from '../../platform/browserView/common/browserView.js';
 import { ipcBrowserViewGroupChannelName } from '../../platform/browserView/common/browserViewGroup.js';
@@ -1422,12 +1423,16 @@ export class CodeApplication extends Disposable {
 		} satisfies ILensLiteLlmConfigService, disposables);
 		mainProcessElectronServer.registerChannel('lensLiteLlmConfig', lensLiteLlmConfigChannel);
 
-		// Lens engine (restart only; start/stop stay lifecycle-owned, not renderer-triggerable)
+		// Lens engine (start/stop stay lifecycle-owned, not renderer-triggerable)
 		const lensEngineService = accessor.get(ILensEngineMainService);
 		const lensEngineChannel = ProxyChannel.fromService({
 			_serviceBrand: undefined,
 			restart: async () => { await lensEngineService.restart(); },
-		} satisfies ILensEngineRestartService, disposables);
+			getRuntimeState: async () => lensEngineService.getRuntimeState(),
+			getUserConfig: () => lensEngineService.getUserConfig(),
+			patchUserConfig: (partial: ILensUserOpencodeConfig) => lensEngineService.patchUserConfig(partial),
+			allowEgressHost: (hostname: string) => lensEngineService.allowEgressHost(hostname),
+		} satisfies ILensEngineRestartService & ILensEngineService, disposables);
 		mainProcessElectronServer.registerChannel('lensEngine', lensEngineChannel);
 
 		// Browser View

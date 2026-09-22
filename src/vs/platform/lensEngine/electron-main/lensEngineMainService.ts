@@ -1,7 +1,3 @@
-/*---------------------------------------------------------------------------------------------
- *  Lens. Proprietary; built on MIT-licensed opencode and VS Code.
- *--------------------------------------------------------------------------------------------*/
-
 import { ChildProcess, spawn } from 'child_process';
 import { randomBytes } from 'crypto';
 import { existsSync, promises as fs } from 'fs';
@@ -18,6 +14,7 @@ import { LensOpenAiFacade, ILensFacadeAddress } from '../../lensProxy/electron-m
 import { LiteLlmBackend } from '../../lensProxy/electron-main/liteLlmBackend.js';
 import { ILensLiteLlmConfigService } from '../common/lensLiteLlmConfig.js';
 import { LensLiteLlmConfigMainService, readLensUserSettings } from './lensLiteLlmConfigMainService.js';
+import { ILensEngineRuntimeState, ILensUserOpencodeConfig } from '../common/lensEngine.js';
 
 export const ILensEngineMainService = createDecorator<ILensEngineMainService>('lensEngineMainService');
 
@@ -33,6 +30,11 @@ export interface ILensEngineMainService {
 	/** Stops and restarts the engine, re-reading the LiteLLM connection and model settings. */
 	restart(): Promise<ILensEngineInfo | undefined>;
 	stop(): void;
+	getRuntimeState(): ILensEngineRuntimeState | undefined;
+	getUserConfig(): Promise<ILensUserOpencodeConfig>;
+	/** Persists the change and restarts the engine so it takes effect. */
+	patchUserConfig(partial: ILensUserOpencodeConfig): Promise<ILensUserOpencodeConfig>;
+	allowEgressHost(hostname: string): Promise<void>;
 }
 
 const ENGINE_USERNAME = 'opencode';
@@ -51,8 +53,8 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	private starting: Promise<ILensEngineInfo | undefined> | undefined;
 	private restarts = 0;
 	private disposed = false;
-	// In the per-user data folder, not /tmp: another local user must not be able to pre-create or read it.
-	private readonly discoveryFile: string;
+	private readonly userConfigFile: string;
+	private readonly egressFile: string;
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
@@ -64,7 +66,8 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		// Single main-process implementation; readApiKey() is intentionally not on the shared,
 		// IPC-exposed interface so the key never travels to the renderer.
 		this.lensLiteLlmConfigService = lensLiteLlmConfigService as LensLiteLlmConfigMainService;
-		this.discoveryFile = join(environmentMainService.userDataPath, 'lens-engine.json');
+		this.userConfigFile = join(environmentMainService.userDataPath, 'lens-opencode-user.json');
+		this.egressFile = join(environmentMainService.userDataPath, 'lens-egress-extra.txt');
 	}
 
 	private readonly lensLiteLlmConfigService: LensLiteLlmConfigMainService;
@@ -83,6 +86,40 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		this.restarts = 0;
 		this.starting = undefined;
 		return this.start();
+	}
+
+	getRuntimeState(): ILensEngineRuntimeState | undefined {
+		return this.info ? { opencodeUrl: this.info.opencodeUrl, opencodeUsername: this.info.username, opencodePassword: this.info.password } : undefined;
+	}
+
+	async getUserConfig(): Promise<ILensUserOpencodeConfig> {
+		try {
+			return sanitizeUserConfig(JSON.parse(await fs.readFile(this.userConfigFile, 'utf8')));
+		} catch {
+			return {};
+		}
+	}
+
+	async patchUserConfig(partial: ILensUserOpencodeConfig): Promise<ILensUserOpencodeConfig> {
+		const current = await this.getUserConfig();
+		const incoming = sanitizeUserConfig(partial);
+		const next = sanitizeUserConfig({ ...current, ...incoming, mcp: incoming.mcp ? { ...current.mcp, ...incoming.mcp } : current.mcp });
+		await fs.writeFile(this.userConfigFile, JSON.stringify(next, null, 2), { mode: 0o600 });
+		if (this.info) {
+			void this.restart();
+		}
+		return next;
+	}
+
+	async allowEgressHost(hostname: string): Promise<void> {
+		const host = hostname.trim().toLowerCase().replace(/^\.+|\.$/g, '');
+		if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host) || /(^|\.)(opencode\.ai|opncd\.ai)$/.test(host)) {
+			throw new Error(`Host is not allowed: ${hostname}`);
+		}
+		const existing = await fs.readFile(this.egressFile, 'utf8').catch(() => '');
+		const hosts = new Set(existing.split(/\s+/).filter(Boolean));
+		hosts.add(host);
+		await fs.writeFile(this.egressFile, [...hosts].join('\n') + '\n', { mode: 0o600 });
 	}
 
 	private async doStart(): Promise<ILensEngineInfo | undefined> {
@@ -116,15 +153,15 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		const port = await freePort();
 		const password = randomBytes(24).toString('hex');
 		const info: ILensEngineInfo = { opencodeUrl: `http://127.0.0.1:${port}`, username: ENGINE_USERNAME, password };
-		this.spawnEngine(opencodeRoot, port, password, facade, models);
+		const userConfig = await this.getUserConfig();
+		this.spawnEngine(opencodeRoot, port, password, facade, models, userConfig);
 		await waitForReady(info);
 		this.info = info;
-		await this.writeDiscovery(info);
 		this.logService.info(`[LensEngine] ready at ${info.opencodeUrl}`);
 		return info;
 	}
 
-	private spawnEngine(opencodeRoot: string, port: number, password: string, facade: ILensFacadeAddress, models: ILensUpstreamModel[]): void {
+	private spawnEngine(opencodeRoot: string, port: number, password: string, facade: ILensFacadeAddress, models: ILensUpstreamModel[], userConfig: ILensUserOpencodeConfig): void {
 		const env: NodeJS.ProcessEnv = { ...process.env };
 		for (const key of SECRET_ENV) {
 			delete env[key];
@@ -140,7 +177,11 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 			OPENCODE_DISABLE_AUTOUPDATE: '1',
 			// A workspace must not be able to loosen permissions or add agents/instructions via its own opencode config.
 			OPENCODE_DISABLE_PROJECT_CONFIG: '1',
-			OPENCODE_CONFIG_CONTENT: JSON.stringify(engineConfig(facade, models)),
+			OPENCODE_LENS_EGRESS_EXTRA_FILE: this.egressFile,
+			// Only the user's own Lens settings can opt into plugins or local MCP servers.
+			OPENCODE_LENS_ALLOW_USER_PLUGINS: userConfig.pluginsAllowed ? '1' : '',
+			OPENCODE_LENS_ALLOW_LOCAL_MCP: hasLocalMcp(userConfig) ? '1' : '',
+			OPENCODE_CONFIG_CONTENT: JSON.stringify(mergeUserConfig(engineConfig(facade, models), userConfig)),
 		});
 
 		const child = spawn(bunPath(), ['run', 'src/index.ts', 'serve', '--hostname', '127.0.0.1', '--port', String(port)], {
@@ -168,16 +209,10 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 			this.restarts++;
 			setTimeout(() => {
 				if (!this.disposed) {
-					this.spawnEngine(opencodeRoot, port, password, facade, models);
+					this.spawnEngine(opencodeRoot, port, password, facade, models, userConfig);
 				}
 			}, this.restarts * 1000);
 		});
-	}
-
-	private async writeDiscovery(info: ILensEngineInfo): Promise<void> {
-		const temp = `${this.discoveryFile}.${randomBytes(4).toString('hex')}`;
-		await fs.writeFile(temp, JSON.stringify(info), { mode: 0o600 });
-		await fs.rename(temp, this.discoveryFile);
 	}
 
 	stop(): void {
@@ -190,9 +225,6 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		this.child = undefined;
 		child?.kill();
 		this.facade?.dispose();
-		if (this.info) {
-			fs.rm(this.discoveryFile, { force: true }).catch(() => undefined);
-		}
 		this.info = undefined;
 	}
 
@@ -211,6 +243,18 @@ function engineConfig(facade: ILensFacadeAddress, models: ILensUpstreamModel[]) 
 		disabled_providers: ['opencode'],
 		share: 'disabled',
 		autoupdate: false,
+		// Reads are free; anything that changes the machine needs the user's approval in Lens Chat.
+		permission: {
+			read: 'allow',
+			glob: 'allow',
+			grep: 'allow',
+			list: 'allow',
+			websearch: 'allow',
+			webfetch: 'allow',
+			bash: 'ask',
+			edit: 'ask',
+			external_directory: 'ask',
+		},
 		model: `lens/${defaultModel.id}`,
 		provider: {
 			lens: {
@@ -260,4 +304,52 @@ async function waitForReady(info: ILensEngineInfo): Promise<void> {
 		await new Promise(resolve => setTimeout(resolve, 500));
 	}
 	throw new Error(`engine did not become ready within ${READY_TIMEOUT_MS / 1000}s`);
+}
+
+const USER_CONFIG_KEYS = ['mcp', 'plugin', 'skills', 'command', 'agent', 'instructions', 'pluginsAllowed', 'hooksAllowed'] as const;
+
+/** Keeps only the user-editable keys and drops per-agent permission/tool overrides, which could bypass approvals. */
+function sanitizeUserConfig(value: unknown): ILensUserOpencodeConfig {
+	if (!value || typeof value !== 'object') {
+		return {};
+	}
+	const input = value as Record<string, unknown>;
+	const out: Record<string, unknown> = {};
+	for (const key of USER_CONFIG_KEYS) {
+		if (input[key] !== undefined) {
+			out[key] = input[key];
+		}
+	}
+	if (out.mcp !== undefined && (typeof out.mcp !== 'object' || out.mcp === null)) {
+		delete out.mcp;
+	}
+	if (out.agent && typeof out.agent === 'object') {
+		out.agent = Object.fromEntries(Object.entries(out.agent as Record<string, unknown>).map(([name, agent]) => {
+			if (!agent || typeof agent !== 'object') {
+				return [name, agent];
+			}
+			const { permission: _permission, tools: _tools, ...rest } = agent as Record<string, unknown>;
+			return [name, rest];
+		}));
+	}
+	out.pluginsAllowed = out.pluginsAllowed === true;
+	out.hooksAllowed = out.hooksAllowed === true;
+	return out as ILensUserOpencodeConfig;
+}
+
+function mergeUserConfig(managed: Record<string, unknown>, user: ILensUserOpencodeConfig): Record<string, unknown> {
+	const merged: Record<string, unknown> = { ...managed };
+	for (const key of ['mcp', 'skills', 'command', 'agent', 'instructions'] as const) {
+		if (user[key] !== undefined) {
+			merged[key] = user[key];
+		}
+	}
+	if (user.pluginsAllowed && user.plugin !== undefined) {
+		merged.plugin = user.plugin;
+	}
+	return merged;
+}
+
+function hasLocalMcp(user: ILensUserOpencodeConfig): boolean {
+	return Object.values(user.mcp ?? {}).some(server => !!server && typeof server === 'object' && (server as { type?: unknown }).type === 'local');
 }
