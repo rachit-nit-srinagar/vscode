@@ -30,6 +30,7 @@ import {
 import { applyChatEvent, eventSessionID } from './chat/streamEvents';
 import { ExtensionsView } from './settings/ExtensionsView';
 import { ProvidersView } from './settings/ProvidersView';
+import { ProviderErrorView } from './chat/ProviderError';
 import { vscode } from './vscode';
 
 type Tab = { id: string; title: string };
@@ -288,7 +289,7 @@ function ChatApp() {
 	}
 
 	function handleEvent(payload: unknown) {
-		const event = payload as { type?: string; properties?: { part?: ChatPart; sessionID?: string; error?: { name?: string; message?: string; data?: { message?: string } } } };
+		const event = payload as { type?: string; properties?: { part?: ChatPart; sessionID?: string; error?: { name?: string; message?: string; data?: { message?: string } }; status?: { type?: string; attempt?: number; message?: string; next?: number } } };
 		const eventType = String(event?.type ?? '');
 		const sessionID = eventSessionID(payload);
 		if (sessionID && sessionID !== active()) {
@@ -327,6 +328,21 @@ function ChatApp() {
 					vscode.postMessage({ type: 'session.messages', sessionID: active() });
 				}
 			}
+		}
+		if (eventType.startsWith('message.part') && error().startsWith('Retrying')) {
+			setError('');
+		}
+		const status = event?.properties?.status;
+		const ownSession = !event?.properties?.sessionID || event.properties.sessionID === active();
+		if (eventType === 'session.status' && status?.type === 'retry' && ownSession) {
+			// The provider refused the request and opencode is waiting to try again; say so instead of looking idle.
+			const wait = status.next ? Math.max(0, Math.round((status.next - Date.now()) / 1000)) : undefined;
+			setError(`Retrying (attempt ${status.attempt ?? 1}): ${status.message ?? 'the model provider returned an error'}${wait !== undefined ? ` Next try in ${wait}s.` : ''}`);
+			setBusy(true);
+			return;
+		}
+		if (eventType === 'session.status' && status?.type === 'busy' && ownSession) {
+			return;
 		}
 		if (eventType.includes('session.status') || eventType === 'session.idle') {
 			if (active()) {
@@ -776,7 +792,7 @@ function ChatApp() {
 					</div>
 				</Show>
 				<Show when={error()}>
-					<div class="lens-error">{error()}</div>
+					<div class="lens-error"><ProviderErrorView text={error()} /></div>
 				</Show>
 				<div class="lens-composer">
 					<Show when={mentions().length}>

@@ -5,8 +5,10 @@ import { Readable } from 'stream';
 import { ILensLlmBackend } from '../common/lensLlmBackend.js';
 
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
-const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
-const MAX_ATTEMPTS = 3;
+// Only dropped connections are retried here. HTTP errors (429 quota, 503 overload) go straight
+// back to the engine, which retries with backoff and shows the reason in Lens Chat; retrying
+// them here too multiplies requests and burns through provider rate limits.
+const MAX_ATTEMPTS = 2;
 
 export interface ILensFacadeAddress {
 	readonly port: number;
@@ -93,15 +95,13 @@ export class LensOpenAiFacade {
 				await delay(attempt * 500);
 				continue;
 			}
-			if (!RETRYABLE_STATUS.has(response.status) || attempt === MAX_ATTEMPTS) {
-				break;
-			}
-			this.log(`[LensFacade] upstream HTTP ${response.status}, retrying (${attempt})`);
-			await response.body?.cancel();
-			await delay(attempt * 500);
+			break;
 		}
 		if (!response) {
 			return this.fail(res, 502, 'no upstream response');
+		}
+		if (!response.ok) {
+			this.log(`[LensFacade] ${upstream.model}: upstream HTTP ${response.status}`);
 		}
 
 		res.writeHead(response.status, {

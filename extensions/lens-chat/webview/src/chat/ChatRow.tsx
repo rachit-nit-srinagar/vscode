@@ -9,6 +9,7 @@ import { CodeFence, MarkdownBlock } from './MarkdownBlock';
 import { chosenAnswersFromPart, QuestionCard, questionsFromPart } from './QuestionCard';
 import type { ChatMessage, ChatPart, QuestionRequest } from './types';
 import { vscode } from '../vscode';
+import { ProviderErrorView } from './ProviderError';
 
 export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: boolean; questions?: QuestionRequest[] }) {
 	const role = createMemo(() => messageRole(props.message));
@@ -65,7 +66,7 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 					<UserBubble parts={parts()} />
 				</Show>
 				<Show when={error()}>
-					<ErrorCard title="The model returned an error" detail={error()} />
+					<ProviderErrorView text={error()!} />
 				</Show>
 			</div>
 		</Show>
@@ -78,7 +79,9 @@ function messageError(message: ChatMessage): string | undefined {
 	if (!error) {
 		return undefined;
 	}
-	return error.data?.message ?? error.message ?? error.name ?? 'Unknown error';
+	const text = error.data?.message ?? error.message ?? error.name ?? 'Unknown error';
+	// Keep the provider's JSON body when the message alone does not carry it.
+	return error.data?.responseBody && !/[[{]/.test(text) ? `${text}: ${error.data.responseBody}` : text;
 }
 
 function UserBubble(props: { parts: ChatPart[] }) {
@@ -124,7 +127,7 @@ function AssistantPart(props: { part: ChatPart; streaming?: boolean; questions?:
 				</Show>
 			</Match>
 			<Match when={props.part.type === 'retry'}>
-				<ErrorCard title="Retrying" detail={props.part.text || String(props.part.state?.error ?? '')} />
+				<ProviderErrorView text={`Retrying (attempt ${props.part.attempt ?? 1}): ${props.part.text || errorText(props.part.state?.error ?? props.part.error)}`} />
 			</Match>
 			<Match when={props.part.type === 'compaction'}>
 				<div class="lens-muted-row">Conversation condensed</div>
@@ -470,18 +473,15 @@ function ChatImage(props: { src: string; alt?: string }) {
 	);
 }
 
-function ErrorCard(props: { title: string; detail?: string }) {
-	return (
-		<div class="lens-error-row">
-			<div class="lens-tool-head">
-				<IconAlert />
-				<span class="lens-error-title">{props.title}</span>
-			</div>
-			<Show when={props.detail}>
-				<div class="lens-error-detail">{props.detail}</div>
-			</Show>
-		</div>
-	);
+function errorText(value: unknown): string {
+	if (!value) {
+		return '';
+	}
+	if (typeof value === 'string') {
+		return value;
+	}
+	const error = value as { message?: string; data?: { message?: string; responseBody?: string } };
+	return error.data?.responseBody ?? error.data?.message ?? error.message ?? JSON.stringify(value);
 }
 
 function ToolIcon(props: { tool: string }) {

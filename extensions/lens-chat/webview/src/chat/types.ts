@@ -12,6 +12,9 @@ export type ChatPart = {
 	name?: string;
 	prompt?: string;
 	description?: string;
+	/** Retry parts: which attempt this was and the provider error that caused it. */
+	attempt?: number;
+	error?: unknown;
 	state?: {
 		status?: ToolStatus;
 		input?: Record<string, unknown>;
@@ -44,7 +47,7 @@ export type QuestionRequest = {
 };
 
 export type ChatMessage = {
-	info?: { role?: string; id?: string; time?: { created?: number; completed?: number }; error?: { name?: string; message?: string; data?: { message?: string } } };
+	info?: { role?: string; id?: string; time?: { created?: number; completed?: number }; error?: { name?: string; message?: string; data?: { message?: string; responseBody?: string } } };
 	parts?: ChatPart[];
 	role?: string;
 };
