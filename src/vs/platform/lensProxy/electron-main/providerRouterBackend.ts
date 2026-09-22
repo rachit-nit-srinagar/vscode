@@ -17,8 +17,8 @@ interface IProviderEndpoint {
 	readonly manualModels?: boolean;
 }
 
-// Speech, audio, embedding and safety-classifier models show up in /models but cannot chat.
-const NON_CHAT_MODEL = /whisper|tts|orpheus|transcribe|speech|audio|embed|moderation|prompt-guard|guard-|dall-e|image-gen|imagen|veo/i;
+// Speech, audio, embedding, image, safety-classifier and agent-only models show up in /models but cannot chat.
+const NON_CHAT_MODEL = /whisper|tts|orpheus|transcribe|speech|audio|embed|moderation|prompt-guard|guard-|dall-e|image-gen|imagen|veo|-image\b|nano-banana|lyria|-live\b|deep-research|computer-use|robotics|\baqa\b/i;
 const VISION_HINT = /gpt-4o|gpt-4\.1|gpt-5|\bo[134]\b|o[34]-|claude|gemini|grok-(2-vision|4)|llama-4|vision|pixtral|llava|qwen.*vl|gemma-3/i;
 
 export function providerEndpoint(config: ILensProviderConfig, apiKey: string | undefined): IProviderEndpoint {

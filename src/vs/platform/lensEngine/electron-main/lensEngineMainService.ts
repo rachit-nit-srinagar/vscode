@@ -363,7 +363,8 @@ function chooseDefaultModel(models: ILensUpstreamModel[]): ILensUpstreamModel {
 
 function versionOf(id: string): number[] {
 	// First version-like number in the model's own name, e.g. 3.1 in "gemini/gemini-3.1-flash-lite".
-	const match = /(?:^|[-_/])[a-z]*?(\d+(?:\.\d+)*)/i.exec(id.slice(id.indexOf('/') + 1));
+	// Sizes (120b) and dates (12-2025, 0514) are not versions.
+	const match = /(?:^|[-_/])[a-z]*?(\d{1,2}(?:\.\d+)*)(?![\d.])(?!-\d{4}\b)(?![bm]\b)/i.exec(id.slice(id.indexOf('/') + 1));
 	return match ? match[1].split('.').map(Number) : [];
 }
 
