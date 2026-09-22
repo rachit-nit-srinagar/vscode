@@ -1429,6 +1429,7 @@ export class CodeApplication extends Disposable {
 			_serviceBrand: undefined,
 			restart: async () => { await lensEngineService.restart(); },
 			getRuntimeState: async () => lensEngineService.getRuntimeState(),
+			getLastError: async () => lensEngineService.getLastError(),
 			getUserConfig: () => lensEngineService.getUserConfig(),
 			patchUserConfig: (partial: ILensUserOpencodeConfig) => lensEngineService.patchUserConfig(partial),
 			allowEgressHost: (hostname: string) => lensEngineService.allowEgressHost(hostname),

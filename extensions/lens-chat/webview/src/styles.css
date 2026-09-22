@@ -2095,3 +2095,141 @@ button.lens-picker-row:focus-visible {
 	object-fit: contain;
 	user-select: none;
 }
+
+.lens-connection {
+	overflow-y: auto;
+}
+
+.lens-conn-section {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px;
+	border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, transparent));
+}
+
+.lens-conn-title {
+	margin: 0;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+}
+
+.lens-conn-hint {
+	margin: 0;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+
+.lens-conn-label {
+	margin-top: 6px;
+	font-size: 12px;
+}
+
+.lens-conn-input {
+	box-sizing: border-box;
+	width: 100%;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: 4px;
+	padding: 5px 8px;
+	font: inherit;
+}
+
+.lens-conn-input:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.lens-conn-input::placeholder {
+	color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+}
+
+.lens-conn-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.lens-conn-primary,
+.lens-conn-secondary {
+	padding: 5px 12px;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	font: inherit;
+	cursor: pointer;
+}
+
+.lens-conn-primary {
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+}
+
+.lens-conn-primary:hover:not(:disabled) {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.lens-conn-secondary {
+	background: var(--vscode-button-secondaryBackground);
+	color: var(--vscode-button-secondaryForeground);
+}
+
+.lens-conn-secondary:hover:not(:disabled) {
+	background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.lens-conn-primary:disabled,
+.lens-conn-secondary:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+
+.lens-conn-status {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	font-size: 12px;
+}
+
+.lens-conn-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
+}
+
+.lens-conn-dot.ok {
+	background: var(--vscode-testing-iconPassed, #3fb950);
+}
+
+.lens-conn-error {
+	margin: 0;
+	color: var(--vscode-errorForeground);
+	font-size: 12px;
+	word-break: break-word;
+}
+
+.lens-conn-models {
+	list-style: none;
+	margin: 4px 0 8px;
+	padding: 0;
+	max-height: 320px;
+	overflow-y: auto;
+}
+
+.lens-conn-model {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 3px 0;
+	cursor: pointer;
+}
+
+.lens-status .lens-conn-primary,
+.lens-empty .lens-conn-primary {
+	margin-top: 8px;
+}

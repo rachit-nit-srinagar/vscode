@@ -190,6 +190,99 @@ class LensEngineAllowEgressAction extends Action2 {
 	}
 }
 
+interface ILensConnectionState {
+	readonly baseUrl: string;
+	readonly hasApiKey: boolean;
+	readonly enabledModels: readonly string[];
+	readonly running: boolean;
+	readonly error?: string;
+}
+
+async function readConnectionState(configurationService: IConfigurationService, lensLiteLlmConfigService: ILensLiteLlmConfigService, lensEngineService: ILensEngineService): Promise<ILensConnectionState> {
+	const running = !!await lensEngineService.getRuntimeState();
+	return {
+		baseUrl: configurationService.getValue<string>('lens.liteLlm.baseUrl') ?? '',
+		hasApiKey: await lensLiteLlmConfigService.hasApiKey(),
+		enabledModels: configurationService.getValue<string[]>('lens.liteLlm.enabledModels') ?? [],
+		running,
+		error: running ? undefined : await lensEngineService.getLastError(),
+	};
+}
+
+class LensConnectionGetAction extends Action2 {
+	constructor() {
+		super({ id: '_lens.connection.get', title: localize2('lens.connection.get', "Get Lens Connection") });
+	}
+
+	run(accessor: ServicesAccessor): Promise<ILensConnectionState> {
+		return readConnectionState(accessor.get(IConfigurationService), accessor.get(ILensLiteLlmConfigService), accessor.get(ILensEngineService));
+	}
+}
+
+class LensConnectionSaveAction extends Action2 {
+	constructor() {
+		super({ id: '_lens.connection.save', title: localize2('lens.connection.save', "Save Lens Connection") });
+	}
+
+	async run(accessor: ServicesAccessor, input?: { baseUrl?: string; apiKey?: string; clearApiKey?: boolean }): Promise<ILensConnectionState> {
+		const configurationService = accessor.get(IConfigurationService);
+		const lensLiteLlmConfigService = accessor.get(ILensLiteLlmConfigService);
+		const lensEngineService = accessor.get(ILensEngineService);
+		const lensEngineRestartService = accessor.get(ILensEngineRestartService);
+
+		const baseUrl = (input?.baseUrl ?? '').trim().replace(/\/+$/, '');
+		if (!/^https?:\/\/[^\s/]+/i.test(baseUrl)) {
+			throw new Error(localize('lens.connection.invalidUrl', "Enter a URL that starts with http:// or https://"));
+		}
+		const previous = (configurationService.getValue<string>('lens.liteLlm.baseUrl') ?? '').trim().replace(/\/+$/, '');
+		const apiKey = input?.apiKey?.trim();
+		// A stored key is only ever sent to the URL it was entered for.
+		if (apiKey) {
+			await lensLiteLlmConfigService.setApiKey(apiKey);
+		} else if (input?.clearApiKey || (previous && previous !== baseUrl)) {
+			await lensLiteLlmConfigService.setApiKey(undefined);
+		}
+		await configurationService.updateValue('lens.liteLlm.baseUrl', baseUrl, ConfigurationTarget.USER);
+		await lensEngineRestartService.restart();
+		return readConnectionState(configurationService, lensLiteLlmConfigService, lensEngineService);
+	}
+}
+
+class LensConnectionListModelsAction extends Action2 {
+	constructor() {
+		super({ id: '_lens.connection.listModels', title: localize2('lens.connection.listModels', "List Lens Connection Models") });
+	}
+
+	run(accessor: ServicesAccessor) {
+		const baseUrl = accessor.get(IConfigurationService).getValue<string>('lens.liteLlm.baseUrl');
+		if (!baseUrl) {
+			throw new Error(localize('lens.connection.noUrl', "Save a LiteLLM URL first."));
+		}
+		return accessor.get(ILensLiteLlmConfigService).listModels(baseUrl);
+	}
+}
+
+class LensConnectionSetModelsAction extends Action2 {
+	constructor() {
+		super({ id: '_lens.connection.setModels', title: localize2('lens.connection.setModels', "Set Lens Connection Models") });
+	}
+
+	async run(accessor: ServicesAccessor, ids?: string[]): Promise<ILensConnectionState> {
+		const configurationService = accessor.get(IConfigurationService);
+		const lensLiteLlmConfigService = accessor.get(ILensLiteLlmConfigService);
+		const lensEngineService = accessor.get(ILensEngineService);
+		const lensEngineRestartService = accessor.get(ILensEngineRestartService);
+		const clean = Array.isArray(ids) ? ids.filter(id => typeof id === 'string' && id.length > 0) : [];
+		await configurationService.updateValue('lens.liteLlm.enabledModels', clean, ConfigurationTarget.USER);
+		await lensEngineRestartService.restart();
+		return readConnectionState(configurationService, lensLiteLlmConfigService, lensEngineService);
+	}
+}
+
+registerAction2(LensConnectionGetAction);
+registerAction2(LensConnectionSaveAction);
+registerAction2(LensConnectionListModelsAction);
+registerAction2(LensConnectionSetModelsAction);
 registerAction2(LensEngineGetRuntimeAction);
 registerAction2(LensEngineGetUserConfigAction);
 registerAction2(LensEnginePatchUserConfigAction);

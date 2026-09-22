@@ -31,6 +31,8 @@ export interface ILensEngineMainService {
 	restart(): Promise<ILensEngineInfo | undefined>;
 	stop(): void;
 	getRuntimeState(): ILensEngineRuntimeState | undefined;
+	/** Why the last start attempt failed, if it did. */
+	getLastError(): string | undefined;
 	getUserConfig(): Promise<ILensUserOpencodeConfig>;
 	/** Persists the change and restarts the engine so it takes effect. */
 	patchUserConfig(partial: ILensUserOpencodeConfig): Promise<ILensUserOpencodeConfig>;
@@ -53,6 +55,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	private starting: Promise<ILensEngineInfo | undefined> | undefined;
 	private restarts = 0;
 	private disposed = false;
+	private lastError: string | undefined;
 	private readonly userConfigFile: string;
 	private readonly egressFile: string;
 
@@ -73,8 +76,10 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	private readonly lensLiteLlmConfigService: LensLiteLlmConfigMainService;
 
 	start(): Promise<ILensEngineInfo | undefined> {
+		this.lastError = undefined;
 		this.starting ??= this.doStart().catch(error => {
-			this.logService.error(`[LensEngine] failed to start: ${error instanceof Error ? error.message : error}`);
+			this.lastError = error instanceof Error ? error.message : String(error);
+			this.logService.error(`[LensEngine] failed to start: ${this.lastError}`);
 			return undefined;
 		});
 		return this.starting;
@@ -86,6 +91,10 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		this.restarts = 0;
 		this.starting = undefined;
 		return this.start();
+	}
+
+	getLastError(): string | undefined {
+		return this.lastError;
 	}
 
 	getRuntimeState(): ILensEngineRuntimeState | undefined {

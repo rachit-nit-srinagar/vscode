@@ -24,6 +24,7 @@ export const ILensEngineService = createDecorator<ILensEngineService>('lensEngin
 export interface ILensEngineService {
 	readonly _serviceBrand: undefined;
 	getRuntimeState(): Promise<ILensEngineRuntimeState | undefined>;
+	getLastError(): Promise<string | undefined>;
 	getUserConfig(): Promise<ILensUserOpencodeConfig>;
 	patchUserConfig(partial: ILensUserOpencodeConfig): Promise<ILensUserOpencodeConfig>;
 	allowEgressHost(hostname: string): Promise<void>;

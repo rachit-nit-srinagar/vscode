@@ -29,6 +29,7 @@ import {
 } from './chat/attachments';
 import { applyChatEvent, eventSessionID } from './chat/streamEvents';
 import { ExtensionsView } from './settings/ExtensionsView';
+import { ConnectionView } from './settings/ConnectionView';
 import { vscode } from './vscode';
 
 type Tab = { id: string; title: string };
@@ -45,6 +46,9 @@ const EFFORTS = ['none', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 type PickerKind = 'agent' | 'model';
 
 export function App() {
+	if (view === 'connection') {
+		return <ConnectionView />;
+	}
 	if (view === 'extensions') {
 		onMount(() => vscode.postMessage({ type: 'ready' }));
 		return <ExtensionsView />;
@@ -589,7 +593,10 @@ function ChatApp() {
 				<div class="lens-status">Loading…</div>
 			</Show>
 			<Show when={booted() && !engine()}>
-				<div class="lens-status">Lens engine is not running. Run “Lens: Configure LiteLLM Connection” from the Command Palette.</div>
+				<div class="lens-status">
+					<p>Lens isn't connected to a model yet.</p>
+					<button class="lens-conn-primary" onClick={() => vscode.postMessage({ type: 'connection.open' })}>Open Connection</button>
+				</div>
 			</Show>
 			<Show when={booted() && engine()}>
 				<header class="lens-tabs" aria-label="Chats">

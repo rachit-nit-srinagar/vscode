@@ -109,7 +109,10 @@ export function ExtensionsView() {
 				<div class="lens-loading">Loading Lens extensions…</div>
 			</Show>
 			<Show when={booted() && !engine()}>
-				<div class="lens-empty">Lens engine is not running. Run “Lens: Configure LiteLLM Connection” from the Command Palette.</div>
+				<div class="lens-empty">
+					<p>Lens isn't connected to a model yet.</p>
+					<button class="lens-conn-primary" onClick={() => vscode.postMessage({ type: 'connection.open' })}>Open Connection</button>
+				</div>
 			</Show>
 			<Show when={booted() && engine()}>
 				<div class="lens-ext-header">

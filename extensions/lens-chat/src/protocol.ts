@@ -59,7 +59,12 @@ export type WebviewToHost =
 	| { type: 'mcp.disconnect'; name: string }
 	| { type: 'config.get' }
 	| { type: 'config.patch'; partial: ILensUserConfig }
-	| { type: 'file.open'; path: string; addedLines?: number[]; isNew?: boolean };
+	| { type: 'file.open'; path: string; addedLines?: number[]; isNew?: boolean }
+	| { type: 'connection.open' }
+	| { type: 'connection.get' }
+	| { type: 'connection.save'; baseUrl: string; apiKey?: string; clearApiKey?: boolean }
+	| { type: 'connection.models' }
+	| { type: 'connection.setModels'; ids: string[] };
 
 export type HostToWebview =
 	| { type: 'boot'; runtime?: ILensEngineRuntime; workspace?: string; userConfig?: ILensUserConfig }

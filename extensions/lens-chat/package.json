@@ -1,102 +1,109 @@
 {
-  "name": "lens-chat",
-  "displayName": "%displayName%",
-  "description": "%description%",
-  "publisher": "vscode",
-  "license": "MIT",
-  "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.70.0"
-  },
-  "categories": [
-    "Other"
+ "name": "lens-chat",
+ "displayName": "%displayName%",
+ "description": "%description%",
+ "publisher": "vscode",
+ "license": "MIT",
+ "version": "0.0.1",
+ "engines": {
+  "vscode": "^1.70.0"
+ },
+ "categories": [
+  "Other"
+ ],
+ "activationEvents": [
+  "onStartupFinished",
+  "onView:lens.chat",
+  "onView:lens.connection",
+  "onView:lens.extensions"
+ ],
+ "extensionKind": [
+  "ui"
+ ],
+ "main": "./dist/extension.js",
+ "contributes": {
+  "commands": [
+   {
+    "command": "lens.openChat",
+    "title": "%command.openChat%",
+    "category": "Chat"
+   },
+   {
+    "command": "lens.chat.new",
+    "title": "%command.newChat%",
+    "icon": "$(add)",
+    "category": "Chat"
+   },
+   {
+    "command": "lens.chat.history",
+    "title": "%command.history%",
+    "icon": "$(history)",
+    "category": "Chat"
+   }
   ],
-  "activationEvents": [
-    "onStartupFinished",
-    "onView:lens.chat",
-    "onView:lens.extensions"
-  ],
-  "extensionKind": [
-    "ui"
-  ],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "lens.openChat",
-        "title": "%command.openChat%",
-        "category": "Chat"
-      },
-      {
-        "command": "lens.chat.new",
-        "title": "%command.newChat%",
-        "icon": "$(add)",
-        "category": "Chat"
-      },
-      {
-        "command": "lens.chat.history",
-        "title": "%command.history%",
-        "icon": "$(history)",
-        "category": "Chat"
-      }
-    ],
-    "viewsContainers": {
-      "secondarySidebar": [
-        {
-          "id": "lens-chat",
-          "title": "%container.chat%",
-          "icon": "media/lens.svg"
-        }
-      ],
-      "activitybar": [
-        {
-          "id": "lens",
-          "title": "%container.extensions%",
-          "icon": "media/lens.svg"
-        }
-      ]
-    },
-    "views": {
-      "lens-chat": [
-        {
-          "id": "lens.chat",
-          "name": "%view.title%",
-          "type": "webview",
-          "icon": "media/lens.svg"
-        }
-      ],
-      "lens": [
-        {
-          "id": "lens.extensions",
-          "name": "%view.extensions%",
-          "type": "webview",
-          "icon": "media/lens.svg"
-        }
-      ]
-    },
-    "configurationDefaults": {
-      "chat.disableAIFeatures": true,
-      "workbench.secondarySideBar.defaultVisibility": "visible"
+  "viewsContainers": {
+   "secondarySidebar": [
+    {
+     "id": "lens-chat",
+     "title": "%container.chat%",
+     "icon": "media/lens.svg"
     }
+   ],
+   "activitybar": [
+    {
+     "id": "lens",
+     "title": "%container.extensions%",
+     "icon": "media/lens.svg"
+    }
+   ]
   },
-  "scripts": {
-    "compile": "node esbuild.mjs && npm run build-webview",
-    "build-webview": "vite build --config webview/vite.config.ts",
-    "test": "vitest run --config webview/vitest.config.ts",
-    "watch": "node esbuild.mjs --watch",
-    "vscode:prepublish": "npm run compile"
+  "views": {
+   "lens-chat": [
+    {
+     "id": "lens.chat",
+     "name": "%view.title%",
+     "type": "webview",
+     "icon": "media/lens.svg"
+    }
+   ],
+   "lens": [
+    {
+     "id": "lens.connection",
+     "name": "%view.connection%",
+     "type": "webview",
+     "icon": "media/lens.svg"
+    },
+    {
+     "id": "lens.extensions",
+     "name": "%view.extensions%",
+     "type": "webview",
+     "icon": "media/lens.svg"
+    }
+   ]
   },
-  "devDependencies": {
-    "@types/node": "24.x",
-    "esbuild": "^0.25.0",
-    "solid-js": "^1.9.9",
-    "typescript": "^5.8.0",
-    "vite": "^6.3.0",
-    "vite-plugin-solid": "^2.11.0",
-    "vitest": "^3.2.7"
-  },
-  "dependencies": {
-    "highlight.js": "^11.12.0",
-    "marked": "^18.0.11"
+  "configurationDefaults": {
+   "chat.disableAIFeatures": true,
+   "workbench.secondarySideBar.defaultVisibility": "visible"
   }
+ },
+ "scripts": {
+  "compile": "node esbuild.mjs && npm run build-webview",
+  "build-webview": "vite build --config webview/vite.config.ts",
+  "test": "vitest run --config webview/vitest.config.ts",
+  "watch": "node esbuild.mjs --watch",
+  "vscode:prepublish": "npm run compile"
+ },
+ "devDependencies": {
+  "@types/node": "24.x",
+  "esbuild": "^0.25.0",
+  "solid-js": "^1.9.9",
+  "typescript": "^5.8.0",
+  "vite": "^6.3.0",
+  "vite-plugin-solid": "^2.11.0",
+  "vitest": "^3.2.7"
+ },
+ "dependencies": {
+  "highlight.js": "^11.12.0",
+  "marked": "^18.0.11"
+ }
 }
