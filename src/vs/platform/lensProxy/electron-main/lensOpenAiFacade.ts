@@ -3,6 +3,7 @@ import { AddressInfo } from 'net';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { Readable } from 'stream';
 import { ILensLlmBackend } from '../common/lensLlmBackend.js';
+import { ThoughtSignatureStore } from './thoughtSignatures.js';
 
 const MAX_BODY_BYTES = 64 * 1024 * 1024;
 // Only dropped connections are retried here. HTTP errors (429 quota, 503 overload) go straight
@@ -24,6 +25,7 @@ export class LensOpenAiFacade {
 
 	private server: Server | undefined;
 	private readonly token = randomBytes(32).toString('hex');
+	private readonly thoughtSignatures = new ThoughtSignatureStore();
 
 	constructor(private readonly backend: ILensLlmBackend, private readonly log: (message: string) => void) { }
 
@@ -74,6 +76,9 @@ export class LensOpenAiFacade {
 		} catch (error) {
 			return this.fail(res, 404, error instanceof Error ? error.message : String(error));
 		}
+		if (upstream.thoughtSignatures) {
+			this.thoughtSignatures.apply(payload);
+		}
 		const body = new TextEncoder().encode(JSON.stringify({ ...payload, model: upstream.model }));
 		const abort = new AbortController();
 		res.on('close', () => abort.abort());
@@ -112,7 +117,8 @@ export class LensOpenAiFacade {
 			res.end();
 			return;
 		}
-		Readable.fromWeb(response.body as import('stream/web').ReadableStream).pipe(res);
+		const stream = upstream.thoughtSignatures ? response.body.pipeThrough(this.thoughtSignatures.observe()) : response.body;
+		Readable.fromWeb(stream as import('stream/web').ReadableStream).pipe(res);
 	}
 
 	private authorized(header: string | undefined): boolean {

@@ -13,6 +13,8 @@ export interface ILensUpstreamRequest {
 	readonly headers: Record<string, string>;
 	/** Model id to send upstream (routers strip their provider prefix). */
 	readonly model: string;
+	/** Gemini 3: tool-call thought signatures must be carried from each response into the next request. */
+	readonly thoughtSignatures?: boolean;
 }
 
 /**

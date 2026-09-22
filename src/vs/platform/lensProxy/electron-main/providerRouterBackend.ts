@@ -130,7 +130,7 @@ export class ProviderRouterBackend implements ILensLlmBackend {
 			throw new Error(`No configured provider for model ${model}`);
 		}
 		const endpoint = providerEndpoint(provider.config, provider.apiKey);
-		return { url: `${endpoint.baseUrl}/chat/completions`, headers: endpoint.headers, model: model.slice(slash + 1) };
+		return { url: `${endpoint.baseUrl}/chat/completions`, headers: endpoint.headers, model: model.slice(slash + 1), thoughtSignatures: provider.config.type === 'gemini' };
 	}
 }
 
