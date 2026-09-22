@@ -1,136 +1,498 @@
-/*---------------------------------------------------------------------------------------------
- *  Lens. Licensed under the MIT License.
- *--------------------------------------------------------------------------------------------*/
+import type { ExtensionContext, TextDocumentContentProvider, TextEditorDecorationType, Webview, WebviewView, WebviewViewProvider } from 'vscode';
+import { commands, EventEmitter, OverviewRulerLane, Range, TextEditorRevealType, ThemeColor, Uri, window, workspace } from 'vscode';
+import { randomBytes } from 'crypto';
+import { basename, isAbsolute, join } from 'path';
+import { OpencodeHostClient } from './opencodeClient';
+import type { HostToWebview, ILensUserConfig, McpConfig, PromptPart, WebviewToHost } from './protocol';
 
-import * as vscode from 'vscode';
-import { promises as fs } from 'fs';
-import { join } from 'path';
+const LENS_DIFF_SCHEME = 'lens-diff';
 
-interface LensMessage {
-	readonly info?: { readonly role?: string };
-	readonly parts?: readonly { readonly type?: string; readonly text?: string }[];
+export function activate(context: ExtensionContext): void {
+	const diffs = new LensDiffContentProvider();
+	const host = new LensChatHost(context, diffs);
+	context.subscriptions.push(
+		workspace.registerTextDocumentContentProvider(LENS_DIFF_SCHEME, diffs),
+		host.insertDecoration,
+		window.registerWebviewViewProvider('lens.chat', new LensWebviewView(host, 'chat'), { webviewOptions: { retainContextWhenHidden: true } }),
+		window.registerWebviewViewProvider('lens.extensions', new LensWebviewView(host, 'extensions'), { webviewOptions: { retainContextWhenHidden: true } }),
+		commands.registerCommand('lens.openChat', async () => {
+			await commands.executeCommand('lens.chat.focus');
+		}),
+		commands.registerCommand('lens.chat.new', async () => {
+			await commands.executeCommand('lens.chat.focus');
+			host.postChat({ type: 'command', action: 'new' });
+		}),
+		commands.registerCommand('lens.chat.history', async () => {
+			await commands.executeCommand('lens.chat.focus');
+			host.postChat({ type: 'command', action: 'history' });
+		}),
+	);
 }
 
-interface LensEngine {
-	readonly opencodeUrl: string;
-	readonly username: string;
-	readonly password: string;
-}
+class LensWebviewView implements WebviewViewProvider {
+	private readonly resolvedWebviews = new WeakSet<Webview>();
 
-interface LensSession {
-	readonly id: string;
-}
+	constructor(
+		private readonly host: LensChatHost,
+		private readonly view: 'chat' | 'extensions',
+	) { }
 
-class LensChatViewProvider implements vscode.WebviewViewProvider {
-	constructor(private readonly discoveryFile: string) { }
-
-	private view: vscode.WebviewView | undefined;
-	private session: LensSession | undefined;
-	private messages: LensMessage[] = [];
-
-	resolveWebviewView(view: vscode.WebviewView): void {
-		this.view = view;
-		view.webview.options = { enableScripts: true };
-		view.webview.html = this.html(view.webview);
-		view.webview.onDidReceiveMessage(message => void this.handleMessage(message));
-	}
-
-	private async handleMessage(message: { readonly type?: string; readonly text?: string }): Promise<void> {
-		if (message.type !== 'send' || !message.text?.trim()) {
+	resolveWebviewView(webviewView: WebviewView): void {
+		const webview = webviewView.webview;
+		webview.options = {
+			enableScripts: true,
+			localResourceRoots: [Uri.joinPath(this.host.context.extensionUri, 'media')],
+		};
+		webview.html = this.host.renderHtml(webview, this.view);
+		if (this.view === 'chat') {
+			webviewView.title = '';
+			this.host.attachChat(webview);
+		}
+		if (this.resolvedWebviews.has(webview)) {
+			void this.host.boot(webview);
 			return;
 		}
-		try {
-			const engine = await this.engine();
-			if (!engine) {
-				throw new Error('Lens engine is not running. Set LITELLM_BASE_URL (and LITELLM_API_KEY) before starting Lens.');
+		this.resolvedWebviews.add(webview);
+		webview.onDidReceiveMessage(async (message: WebviewToHost) => {
+			try {
+				await this.host.handleMessage(webview, message);
+			} catch (error) {
+				this.host.post(webview, { type: 'error', message: error instanceof Error ? error.message : String(error) });
 			}
-			const baseUrl = engine.opencodeUrl;
-			const headers: Record<string, string> = {
-				'content-type': 'application/json',
-				authorization: `Basic ${Buffer.from(`${engine.username}:${engine.password}`).toString('base64')}`
-			};
-			const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-			if (folder) {
-				headers['x-opencode-directory'] = folder;
+		});
+	}
+}
+
+class LensChatHost {
+	client: OpencodeHostClient | undefined;
+	private events: AbortController | undefined;
+	private readonly webviews = new Set<Webview>();
+	private chatWebview: Webview | undefined;
+	private pendingChatCommand: Extract<HostToWebview, { type: 'command' }> | undefined;
+	readonly insertDecoration: TextEditorDecorationType;
+
+	constructor(
+		readonly context: ExtensionContext,
+		private readonly diffs: LensDiffContentProvider,
+	) {
+		this.insertDecoration = window.createTextEditorDecorationType({
+			isWholeLine: true,
+			backgroundColor: new ThemeColor('diffEditor.insertedLineBackground'),
+			overviewRulerColor: new ThemeColor('editorGutter.addedBackground'),
+			overviewRulerLane: OverviewRulerLane.Left,
+		});
+	}
+
+	post(webview: Webview, message: HostToWebview): void {
+		void webview.postMessage(message);
+	}
+
+	attachChat(webview: Webview): void {
+		this.chatWebview = webview;
+		if (this.pendingChatCommand) {
+			this.post(webview, this.pendingChatCommand);
+			this.pendingChatCommand = undefined;
+		}
+	}
+
+	postChat(message: Extract<HostToWebview, { type: 'command' }>): void {
+		if (this.chatWebview) {
+			this.post(this.chatWebview, message);
+			return;
+		}
+		this.pendingChatCommand = message;
+	}
+
+	private broadcast(message: HostToWebview): void {
+		for (const webview of this.webviews) {
+			this.post(webview, message);
+		}
+	}
+
+	async handleMessage(webview: Webview, message: WebviewToHost): Promise<void> {
+		this.webviews.add(webview);
+		if (message.type === 'ready') {
+			await this.boot(webview);
+			return;
+		}
+		if (message.type === 'file.open') {
+			await this.openFileChange(message.path, message.addedLines ?? [], !!message.isNew);
+			return;
+		}
+		const client = this.client;
+		if (!client) {
+			throw new Error('Lens engine is not running. Run “Lens: Configure LiteLLM Connection” from the Command Palette.');
+		}
+
+		switch (message.type) {
+			case 'session.create': {
+				const data = await client.request('POST', '/session', sessionCreateBody(message));
+				this.post(webview, { type: 'result', requestType: message.type, data: unwrapSession(data) });
+				return;
 			}
-			if (!this.session) {
-				const response = await fetch(`${baseUrl}/session`, {
-					method: 'POST',
-					headers,
-					body: JSON.stringify({ title: 'Lens Chat' })
-				});
-				if (!response.ok) {
-					throw new Error(`Session creation failed: HTTP ${response.status}`);
+			case 'session.list': {
+				const query = message.search ? `?search=${encodeURIComponent(message.search)}` : '';
+				const data = await client.request('GET', `/session${query}`);
+				this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });
+				return;
+			}
+			case 'session.select': {
+				const data = await client.request('GET', `/session/${encodeURIComponent(message.sessionID)}`);
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'session.close': {
+				try {
+					await client.request('POST', `/session/${encodeURIComponent(message.sessionID)}/abort`);
+				} catch {
+					// Already idle or gone; still close the tab.
 				}
-				this.session = await response.json() as LensSession;
+				this.post(webview, { type: 'result', requestType: message.type, data: { sessionID: message.sessionID } });
+				return;
 			}
-			const promptResponse = await fetch(`${baseUrl}/session/${encodeURIComponent(this.session.id)}/message`, {
-				method: 'POST',
-				headers,
-				body: JSON.stringify({ parts: [{ type: 'text', text: message.text }] })
+			case 'session.delete': {
+				await client.request('DELETE', `/session/${encodeURIComponent(message.sessionID)}`);
+				this.post(webview, { type: 'result', requestType: message.type, data: { sessionID: message.sessionID } });
+				return;
+			}
+			case 'session.update': {
+				const body: Record<string, unknown> = {};
+				if (message.title !== undefined) {
+					body.title = message.title;
+				}
+				if (message.archived) {
+					body.time = { archived: Date.now() };
+				}
+				const data = await client.request('PATCH', `/session/${encodeURIComponent(message.sessionID)}`, body);
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'session.prompt': {
+				const parts = message.parts?.length ? message.parts : [{ type: 'text', text: message.text } satisfies PromptPart];
+				const data = await client.request('POST', `/session/${encodeURIComponent(message.sessionID)}/message`, sessionPromptBody(message, parts));
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'session.abort': {
+				const data = await client.request('POST', `/session/${encodeURIComponent(message.sessionID)}/abort`);
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'session.messages': {
+				const data = await client.request('GET', `/session/${encodeURIComponent(message.sessionID)}/message`);
+				this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });
+				return;
+			}
+			case 'session.command': {
+				const data = await client.request('POST', `/session/${encodeURIComponent(message.sessionID)}/command`, {
+					command: message.command,
+					arguments: message.arguments ?? '',
+					agent: message.agent,
+					variant: message.variant,
+				});
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'find.files': {
+				const data = await client.request('GET', `/find/file?query=${encodeURIComponent(message.query)}`);
+				this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });
+				return;
+			}
+			case 'find.symbols': {
+				try {
+					const data = await client.request('GET', `/find/symbol?query=${encodeURIComponent(message.query)}`);
+					this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });
+				} catch {
+					this.post(webview, { type: 'result', requestType: message.type, data: [] });
+				}
+				return;
+			}
+			case 'session.diff': {
+				try {
+					const data = await client.request('GET', `/session/${encodeURIComponent(message.sessionID)}/diff`);
+					this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });
+				} catch {
+					this.post(webview, { type: 'result', requestType: message.type, data: [] });
+				}
+				return;
+			}
+			case 'command.list': {
+				const data = await client.request('GET', '/command');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'skill.list': {
+				const data = await client.request('GET', '/skill');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'agent.list': {
+				const data = await client.request('GET', '/agent');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'provider.list': {
+				const data = await client.request('GET', '/provider');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'permission.list': {
+				const data = await client.request('GET', '/permission');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'permission.reply': {
+				const data = await client.request('POST', `/permission/${encodeURIComponent(message.requestID)}/reply`, {
+					reply: message.reply,
+				});
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'question.list': {
+				const data = await client.request('GET', '/question');
+				this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });
+				return;
+			}
+			case 'question.reply': {
+				const data = await client.request('POST', `/question/${encodeURIComponent(message.requestID)}/reply`, {
+					answers: message.answers,
+				});
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'question.reject': {
+				const data = await client.request('POST', `/question/${encodeURIComponent(message.requestID)}/reject`);
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'mcp.status': {
+				const data = await client.request('GET', '/mcp');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'mcp.add': {
+				await this.addMcpWithConsent(message.name, message.config);
+				await client.request('POST', '/mcp', { name: message.name, config: message.config });
+				const data = await client.request('GET', '/mcp');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'mcp.connect': {
+				await client.request('POST', `/mcp/${encodeURIComponent(message.name)}/connect`);
+				const data = await client.request('GET', '/mcp');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'mcp.disconnect': {
+				await client.request('POST', `/mcp/${encodeURIComponent(message.name)}/disconnect`);
+				const data = await client.request('GET', '/mcp');
+				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'config.get': {
+				const data = await commands.executeCommand<ILensUserConfig>('_lens.engine.getUserConfig');
+				this.post(webview, { type: 'result', requestType: message.type, data: data ?? {} });
+				return;
+			}
+			case 'config.patch': {
+				if (message.partial.pluginsAllowed || message.partial.hooksAllowed) {
+					const kind = message.partial.pluginsAllowed ? 'plugins' : 'hooks';
+					const approved = await this.confirm(
+						`Enable user ${kind}? They run in-process and can execute shell commands. Only approve extensions you trust.`,
+						`Enable ${kind}`,
+					);
+					if (!approved) {
+						throw new Error(`${kind} were not enabled`);
+					}
+				}
+				const data = await commands.executeCommand<ILensUserConfig>('_lens.engine.patchUserConfig', message.partial);
+				this.post(webview, { type: 'result', requestType: message.type, data: data ?? {} });
+				return;
+			}
+		}
+	}
+
+	private async addMcpWithConsent(name: string, config: McpConfig): Promise<void> {
+		if (config.type === 'remote') {
+			const hostname = hostnameOf(config.url);
+			const approved = await this.confirm(
+				`Add remote MCP "${name}" at ${config.url}?\n\nThis allows Lens to connect to ${hostname} (egress consent).`,
+				'Allow host',
+			);
+			if (!approved) {
+				throw new Error('MCP add cancelled');
+			}
+			if (hostname) {
+				await commands.executeCommand('_lens.engine.allowEgress', hostname);
+			}
+		} else {
+			const commandLine = config.command.join(' ');
+			const approved = await this.confirm(
+				`Add local MCP "${name}"?\n\nLens will spawn:\n${commandLine}\n\nOnly continue if you trust this command.`,
+				'Allow spawn',
+			);
+			if (!approved) {
+				throw new Error('MCP add cancelled');
+			}
+		}
+		await commands.executeCommand('_lens.engine.patchUserConfig', { mcp: { [name]: config } });
+	}
+
+	private async confirm(message: string, action: string): Promise<boolean> {
+		const choice = await window.showWarningMessage(message, { modal: true }, action);
+		return choice === action;
+	}
+
+	private async openFileChange(filePath: string, addedLines: number[], isNew: boolean): Promise<void> {
+		const uri = this.resolveFileUri(filePath);
+		if (isNew) {
+			try {
+				await workspace.fs.stat(uri);
+				const left = Uri.from({ scheme: LENS_DIFF_SCHEME, path: `/empty/${basename(uri.fsPath)}` });
+				this.diffs.set(left, '');
+				await commands.executeCommand('vscode.diff', left, uri, `${basename(uri.fsPath)} (new file)`);
+				return;
+			} catch {
+				// File is not on disk yet; open it if possible and highlight additions.
+			}
+		}
+
+		const document = await workspace.openTextDocument(uri);
+		const editor = await window.showTextDocument(document, { preview: true, preserveFocus: false });
+		const ranges = addedLines
+			.map(line => Math.max(0, line - 1))
+			.filter(line => line < document.lineCount)
+			.slice(0, 400)
+			.map(line => {
+				const text = document.lineAt(line);
+				return new Range(line, 0, line, text.text.length);
 			});
-			if (!promptResponse.ok) {
-				throw new Error(`Prompt failed: HTTP ${promptResponse.status}`);
-			}
-			await this.refreshMessages(baseUrl, headers);
-		} catch (error) {
-			this.post({ type: 'error', message: error instanceof Error ? error.message : String(error) });
+		editor.setDecorations(this.insertDecoration, ranges);
+		const first = ranges[0];
+		if (first) {
+			editor.revealRange(first, TextEditorRevealType.InCenter);
 		}
 	}
 
-	private async engine(): Promise<LensEngine | undefined> {
-		try {
-			// Only trust a discovery file that we own and nobody else can read or write.
-			const stat = await fs.stat(this.discoveryFile);
-			if (typeof process.getuid === 'function' && stat.uid !== process.getuid()) {
-				return undefined;
-			}
-			if (process.platform !== 'win32' && (stat.mode & 0o077) !== 0) {
-				return undefined;
-			}
-			const discovery = JSON.parse(await fs.readFile(this.discoveryFile, 'utf8')) as Partial<LensEngine>;
-			if (!discovery.opencodeUrl || !discovery.username || !discovery.password) {
-				return undefined;
-			}
-			if (new URL(discovery.opencodeUrl).hostname !== '127.0.0.1') {
-				return undefined;
-			}
-			return { opencodeUrl: discovery.opencodeUrl.replace(/\/+$/, ''), username: discovery.username, password: discovery.password };
-		} catch {
-			return undefined;
+	private resolveFileUri(filePath: string): Uri {
+		if (!filePath) {
+			throw new Error('No file path to open');
 		}
+		if (isAbsolute(filePath) || /^[A-Za-z]:[\\/]/.test(filePath)) {
+			return Uri.file(filePath);
+		}
+		const folder = workspace.workspaceFolders?.[0]?.uri.fsPath;
+		return Uri.file(folder ? join(folder, filePath) : filePath);
 	}
 
-	private async refreshMessages(baseUrl: string, headers: Record<string, string>): Promise<void> {
-		if (!this.session) {
+	async boot(webview: Webview): Promise<void> {
+		const runtime = await commands.executeCommand<import('./protocol').ILensEngineRuntime | undefined>('_lens.engine.getRuntime');
+		if (!runtime) {
+			this.post(webview, { type: 'boot' });
 			return;
 		}
-		const response = await fetch(`${baseUrl}/session/${encodeURIComponent(this.session.id)}/message`, { headers });
-		if (!response.ok) {
-			throw new Error(`Message history failed: HTTP ${response.status}`);
-		}
-		this.messages = await response.json() as LensMessage[];
-		this.post({ type: 'messages', messages: this.messages.map(message => ({
-			role: message.info?.role ?? 'assistant',
-			text: (message.parts ?? []).map(part => part.text ?? '').join('')
-		})) });
+		const workspaceFolder = workspace.workspaceFolders?.[0]?.uri.fsPath;
+		this.client = new OpencodeHostClient(runtime, workspaceFolder);
+		this.events?.abort();
+		this.events = new AbortController();
+		this.client.subscribeEvents(payload => {
+			this.broadcast({ type: 'event', payload });
+		}, this.events.signal);
+		const userConfig = await commands.executeCommand<ILensUserConfig>('_lens.engine.getUserConfig').then(value => value ?? {}, () => ({}));
+		this.post(webview, { type: 'boot', runtime, workspace: workspaceFolder, userConfig });
 	}
 
-	private post(message: unknown): void {
-		this.view?.webview.postMessage(message);
-	}
-
-	private html(webview: vscode.Webview): string {
-		const nonce = [...crypto.getRandomValues(new Uint8Array(16))].map(value => value.toString(16).padStart(2, '0')).join('');
-		return `<!doctype html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'"><style>
-		body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:10px}#messages{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}.message{white-space:pre-wrap}.user{color:var(--vscode-textLink-foreground)}.error{color:var(--vscode-errorForeground)}textarea{box-sizing:border-box;width:100%;min-height:70px;resize:vertical;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);padding:8px}button{margin-top:8px;width:100%;padding:7px;background:var(--vscode-button-background);color:var(--vscode-button-foreground);border:0}button:hover{background:var(--vscode-button-hoverBackground)}</style></head><body><div id="messages"><div>Lens Chat is ready.</div></div><textarea id="prompt" placeholder="Ask Lens to help with your workspace..."></textarea><button id="send">Send</button><script nonce="${nonce}">
-		const api=acquireVsCodeApi();const messages=document.getElementById('messages');const prompt=document.getElementById('prompt');document.getElementById('send').addEventListener('click',()=>{const text=prompt.value.trim();if(!text)return;messages.insertAdjacentHTML('beforeend','<div class="message user"></div>');messages.lastElementChild.textContent=text;prompt.value='';api.postMessage({type:'send',text});});window.addEventListener('message',event=>{const data=event.data;if(data.type==='messages'){for(const child of [...messages.children].slice(1))child.remove();for(const item of data.messages){const node=document.createElement('div');node.className='message';node.textContent=(item.role||'assistant')+': '+(item.text||'');messages.appendChild(node);}}if(data.type==='error'){const node=document.createElement('div');node.className='message error';node.textContent=data.message;messages.appendChild(node);}});</script></body></html>`;
+	renderHtml(webview: Webview, view: 'chat' | 'extensions'): string {
+		const scriptUri = webview.asWebviewUri(Uri.joinPath(this.context.extensionUri, 'media', 'webview', 'index.js'));
+		const nonce = randomBytes(16).toString('base64');
+		return `<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body style="margin:0;height:100%;color:var(--vscode-foreground);background:var(--vscode-sideBar-background);font-family:var(--vscode-font-family);">
+	<div id="root" data-view="${view}" style="height:100%;"></div>
+	<script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
 	}
 }
 
-export function activate(context: vscode.ExtensionContext): void {
-	// globalStorageUri is <userData>/User/globalStorage/<extension id>; the engine writes to <userData>.
-	const provider = new LensChatViewProvider(join(context.globalStorageUri.fsPath, '..', '..', '..', 'lens-engine.json'));
-	context.subscriptions.push(vscode.window.registerWebviewViewProvider('lens-chat.view', provider));
-	context.subscriptions.push(vscode.commands.registerCommand('lens-chat.open', () => vscode.commands.executeCommand('workbench.view.extension.lens')));
+function hostnameOf(url: string): string | undefined {
+	try {
+		return new URL(url).hostname;
+	} catch {
+		return undefined;
+	}
+}
+
+function isUsableProviderID(id: string | undefined): id is string {
+	return !!id && !/^\d+$/.test(id);
+}
+
+function sessionCreateBody(message: { agent?: string; model?: { id?: string; providerID?: string; variant?: string } }): Record<string, unknown> | undefined {
+	const body: Record<string, unknown> = {};
+	if (message.agent?.trim()) {
+		body.agent = message.agent.trim();
+	}
+	const providerID = message.model?.providerID?.trim();
+	const id = message.model?.id?.trim();
+	const variant = message.model?.variant?.trim();
+	if (isUsableProviderID(providerID) && id) {
+		body.model = { id, providerID, ...(variant ? { variant } : {}) };
+	}
+	return Object.keys(body).length ? body : undefined;
+}
+
+function sessionPromptBody(message: { agent?: string; variant?: string; model?: { providerID?: string; modelID?: string } }, parts: PromptPart[]): Record<string, unknown> {
+	const body: Record<string, unknown> = { parts };
+	if (message.agent?.trim()) {
+		body.agent = message.agent.trim();
+	}
+	if (message.variant?.trim()) {
+		body.variant = message.variant.trim();
+	}
+	const providerID = message.model?.providerID?.trim();
+	const modelID = message.model?.modelID?.trim();
+	if (isUsableProviderID(providerID) && modelID) {
+		body.model = { providerID, modelID };
+	}
+	return body;
+}
+
+function unwrapList(data: unknown): unknown {
+	if (Array.isArray(data)) {
+		return data;
+	}
+	if (data && typeof data === 'object' && Array.isArray((data as { data?: unknown }).data)) {
+		return (data as { data: unknown[] }).data;
+	}
+	return data;
+}
+
+function unwrapSession(data: unknown): unknown {
+	if (data && typeof data === 'object' && (data as { id?: unknown }).id) {
+		return data;
+	}
+	if (data && typeof data === 'object' && (data as { data?: { id?: unknown } }).data?.id) {
+		return (data as { data: unknown }).data;
+	}
+	return data;
+}
+
+class LensDiffContentProvider implements TextDocumentContentProvider {
+	private readonly contents = new Map<string, string>();
+	private readonly emitter = new EventEmitter<Uri>();
+	readonly onDidChange = this.emitter.event;
+
+	provideTextDocumentContent(uri: Uri): string {
+		return this.contents.get(uri.toString()) ?? '';
+	}
+
+	set(uri: Uri, text: string): void {
+		this.contents.set(uri.toString(), text);
+		this.emitter.fire(uri);
+	}
 }

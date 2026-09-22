@@ -1,0 +1,2097 @@
+:root {
+	color: var(--vscode-foreground);
+	background: var(--vscode-sideBar-background);
+	font-family: var(--vscode-font-family);
+	font-size: 13.5px;
+	line-height: var(--lens-line-height);
+	--lens-line-height: 1.52;
+	--lens-code-line-height: 1.45;
+	--lens-md-block-gap: 0.65em;
+	--lens-radius: 10px;
+	--lens-radius-inner: 8px;
+	--lens-chat-foreground: #fff;
+}
+
+html, body, #root {
+	height: 100%;
+	min-height: 100%;
+	margin: 0;
+	overflow: hidden;
+}
+
+body {
+	color: var(--vscode-foreground);
+	background: var(--vscode-sideBar-background);
+	line-height: var(--lens-line-height);
+}
+
+.lens-root {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	background: var(--vscode-sideBar-background);
+}
+
+.lens-status {
+	padding: 20px 16px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 13.5px;
+}
+
+.lens-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 10px 6px;
+	min-height: 32px;
+}
+
+.lens-header-title {
+	font-size: 12.5px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: var(--vscode-foreground);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lens-header-actions {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	height: 35px;
+	padding: 0 8px 0 4px;
+	gap: 0;
+	z-index: 2;
+	background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-tab-inactiveBackground, var(--vscode-sideBar-background)));
+	box-shadow: -16px 0 10px -6px var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-tab-inactiveBackground, var(--vscode-sideBar-background)));
+}
+
+.lens-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-icon-foreground, var(--vscode-foreground));
+	cursor: pointer;
+	opacity: 0.8;
+}
+
+.lens-icon-btn:hover,
+.lens-icon-btn.active {
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+	opacity: 1;
+}
+
+.lens-tabs .lens-icon-btn {
+	width: 22px;
+	height: 22px;
+	opacity: 0.7;
+}
+
+.lens-tabs .lens-icon-btn:hover,
+.lens-tabs .lens-icon-btn.active {
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+	opacity: 1;
+}
+
+.lens-tabs {
+	display: flex;
+	align-items: stretch;
+	height: 35px;
+	min-height: 35px;
+	max-height: 35px;
+	line-height: 1;
+	padding: 0;
+	overflow: hidden;
+	flex: 0 0 auto;
+	background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-tab-inactiveBackground, var(--vscode-sideBar-background)));
+	border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder, var(--vscode-tab-border, var(--vscode-panel-border, transparent)));
+}
+
+.lens-tabs-list {
+	display: flex;
+	align-items: stretch;
+	gap: 0;
+	min-width: 0;
+	flex: 1;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+}
+
+.lens-tabs-list::-webkit-scrollbar {
+	display: none;
+}
+
+.lens-tab {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 80px;
+	max-width: 200px;
+	height: 35px;
+	padding: 0 4px 0 10px;
+	border: 0;
+	border-radius: 0;
+	border-right: 1px solid var(--vscode-tab-border, transparent);
+	background: var(--vscode-tab-inactiveBackground, transparent);
+	color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
+	font-size: 12.5px;
+	line-height: 35px;
+	box-sizing: border-box;
+	flex: 0 1 auto;
+	cursor: pointer;
+	user-select: none;
+	outline-offset: -2px;
+}
+
+.lens-tab.active {
+	background: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
+	color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+	box-shadow: inset 0 1px 0 var(--vscode-tab-activeBorderTop, transparent);
+}
+
+.lens-tab.active::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 1px;
+	pointer-events: none;
+	background: var(--vscode-tab-activeBorder, transparent);
+}
+
+.lens-tab:hover:not(.active) {
+	background: var(--vscode-tab-hoverBackground, var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)));
+	color: var(--vscode-tab-hoverForeground, var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground)));
+}
+
+.lens-tab.active:hover {
+	background: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
+}
+
+.lens-tab-icon {
+	flex: 0 0 auto;
+	display: block;
+	opacity: 0.75;
+}
+
+.lens-tab.active .lens-tab-icon {
+	opacity: 1;
+}
+
+.lens-tab-label {
+	min-width: 0;
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lens-tab-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.lens-tab.active .lens-tab-close,
+.lens-tab:hover .lens-tab-close,
+.lens-tab-close:focus-visible {
+	opacity: 0.7;
+}
+
+.lens-tab-close:hover {
+	opacity: 1;
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.lens-history {
+	position: absolute;
+	right: 8px;
+	top: 35px;
+	width: min(280px, calc(100% - 16px));
+	max-height: 360px;
+	overflow: auto;
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	z-index: 10;
+	padding: 8px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.lens-history-search {
+	width: 100%;
+	box-sizing: border-box;
+	margin-bottom: 8px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: 4px;
+	padding: 5px 8px;
+	font: inherit;
+}
+
+.lens-history-search:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.lens-history-group {
+	font-size: 11.5px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--vscode-descriptionForeground);
+	padding: 8px 4px 4px;
+}
+
+.lens-history-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 8px;
+	padding: 2px 0;
+}
+
+.lens-history-open {
+	flex: 1;
+	min-width: 0;
+	text-align: left;
+	background: transparent;
+	border: 0;
+	color: inherit;
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lens-history-open:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-history-actions {
+	display: flex;
+	gap: 4px;
+	flex: 0 0 auto;
+}
+
+.lens-text-btn {
+	border: 0;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	font-size: 11.5px;
+	padding: 2px 4px;
+}
+
+.lens-text-btn:hover {
+	color: var(--vscode-foreground);
+}
+
+.lens-timeline {
+	flex: 1;
+	overflow: auto;
+	padding: 4px 16px 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	color: var(--lens-chat-foreground);
+}
+
+.lens-empty {
+	flex: 1;
+}
+
+.lens-row {
+	padding: 10px 0 2px;
+	min-width: 0;
+}
+
+.lens-row-assistant {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.lens-user-message {
+	color: var(--lens-chat-foreground);
+	white-space: pre-line;
+	word-wrap: break-word;
+	overflow-wrap: anywhere;
+	overflow: hidden;
+	border-radius: var(--lens-radius);
+	cursor: text;
+	user-select: text;
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+}
+
+.lens-composer-box.lens-user-message {
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+}
+
+.lens-composer-box.lens-user-message:focus-within {
+	border-color: var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.lens-composer-box.lens-user-message:hover {
+	border-color: var(--vscode-focusBorder);
+}
+
+.lens-user-text {
+	padding: 4px 6px;
+	line-height: var(--lens-line-height);
+}
+
+.lens-user-message .lens-file-chip {
+	background: var(--vscode-list-hoverBackground);
+	color: var(--vscode-foreground);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.lens-image-thumb,
+.lens-md img {
+	display: inline-block;
+	box-sizing: border-box;
+	width: 50px;
+	height: 35px;
+	min-width: 50px;
+	min-height: 35px;
+	flex-shrink: 0;
+	object-fit: cover;
+	vertical-align: top;
+	margin: 0;
+	border-radius: var(--lens-radius-inner);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	background: var(--vscode-editor-background, transparent);
+	cursor: pointer;
+}
+
+.lens-image-row {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: flex-start;
+	padding: 4px 6px 2px;
+}
+
+.lens-image-row .lens-image-thumb,
+.lens-image-row .lens-file-chip,
+.lens-image-row .lens-chip {
+	flex: 0 0 auto;
+	margin-top: 0;
+}
+
+.lens-user-message .lens-image-thumb {
+	display: block;
+}
+
+.lens-image-thumb:hover,
+.lens-md img:hover {
+	filter: brightness(1.08);
+	outline: 1px solid var(--vscode-focusBorder, rgba(255, 255, 255, 0.35));
+	outline-offset: 1px;
+}
+
+.lens-image-thumb:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, rgba(255, 255, 255, 0.35));
+	outline-offset: 1px;
+}
+
+.lens-file-chip {
+	display: inline-flex;
+	align-items: center;
+	margin-top: 6px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-size: 11.5px;
+	background: color-mix(in srgb, var(--vscode-badge-foreground) 12%, transparent);
+}
+
+.lens-assistant-text {
+	color: var(--lens-chat-foreground);
+	overflow-wrap: anywhere;
+}
+
+.lens-working {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 0 4px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12.5px;
+}
+
+.lens-spinner {
+	width: 10px;
+	height: 10px;
+	border: 1.5px solid var(--vscode-descriptionForeground);
+	border-right-color: transparent;
+	border-radius: 50%;
+	animation: lens-spin 0.7s linear infinite;
+}
+
+@keyframes lens-spin {
+	to { transform: rotate(360deg); }
+}
+
+.lens-think {
+	margin: 0 0 2px 2px;
+}
+
+.lens-think-toggle,
+.lens-tool-more {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	font: inherit;
+	font-size: 13.5px;
+	line-height: 1.2;
+}
+
+.lens-think-toggle:hover,
+.lens-tool-more:hover {
+	color: var(--vscode-foreground);
+}
+
+.lens-think-label.streaming {
+	background: linear-gradient(90deg, var(--vscode-foreground), var(--vscode-descriptionForeground));
+	background-size: 200% 100%;
+	background-clip: text;
+	-webkit-background-clip: text;
+	color: transparent;
+	animation: lens-shimmer 1.6s linear infinite;
+}
+
+@keyframes lens-shimmer {
+	0% { background-position: 100% 0; }
+	100% { background-position: -100% 0; }
+}
+
+.lens-think-body {
+	max-height: 150px;
+	overflow: auto;
+	margin-top: 6px;
+	padding: 8px 10px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 13.5px;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	scrollbar-width: none;
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+}
+
+.lens-think-body::-webkit-scrollbar {
+	display: none;
+}
+
+.lens-tool-wrap {
+	min-width: 0;
+}
+
+.lens-tool-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 2px 0 4px;
+	padding: 2px 0 2px 10px;
+	border-left: 2px solid var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.lens-call-card {
+	min-width: 0;
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	overflow: hidden;
+}
+
+.lens-call-card.mcp {
+	border-color: color-mix(in srgb, var(--vscode-textLink-foreground, #4daafc) 35%, var(--vscode-panel-border));
+}
+
+.lens-call-card.error {
+	border-color: color-mix(in srgb, var(--vscode-errorForeground) 45%, var(--vscode-panel-border));
+}
+
+.lens-call-card.running {
+	border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #3fb950) 40%, var(--vscode-panel-border));
+}
+
+.lens-call-card-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	margin: 0;
+	padding: 8px 10px;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.lens-call-card-head:disabled {
+	cursor: default;
+}
+
+.lens-call-card-head:hover:not(:disabled) {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-mcp-badge {
+	flex: 0 0 auto;
+	padding: 1px 6px;
+	border-radius: 999px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	line-height: 1.4;
+	color: var(--vscode-badge-foreground, var(--vscode-foreground));
+	background: var(--vscode-badge-background, color-mix(in srgb, var(--vscode-textLink-foreground, #4daafc) 25%, transparent));
+}
+
+.lens-call-card-title {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+	flex: 1;
+	overflow: hidden;
+	font-size: 12.5px;
+	line-height: 1.35;
+}
+
+.lens-call-card-server {
+	font-weight: 650;
+	color: var(--vscode-foreground);
+	white-space: nowrap;
+}
+
+.lens-call-card-sep {
+	flex: 0 0 auto;
+	color: var(--vscode-descriptionForeground);
+	opacity: 0.8;
+}
+
+.lens-call-card-tool {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-descriptionForeground);
+	font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
+	font-size: 12px;
+}
+
+.lens-call-card-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	flex: 0 0 auto;
+	font-size: 11.5px;
+	font-weight: 500;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-call-card-status.running {
+	color: var(--vscode-testing-iconPassed, #3fb950);
+}
+
+.lens-call-card-status.error {
+	color: var(--vscode-errorForeground);
+}
+
+.lens-call-card-more {
+	flex: 0 0 auto;
+	font-size: 11.5px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-call-card-summary {
+	padding: 0 10px 8px 42px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+	line-height: 1.35;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lens-call-card-output {
+	border-top: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	max-height: 200px;
+	overflow: auto;
+}
+
+.lens-call-card-output .lens-codeblock {
+	border: 0;
+	border-radius: 0;
+	margin: 0;
+}
+
+.lens-call-card-output .lens-codeblock-bar {
+	display: none;
+}
+
+.lens-call-card-truncated {
+	padding: 4px 10px 8px;
+	font-size: 11.5px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-tool-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 10px;
+}
+
+.lens-tool-title {
+	font-weight: 700;
+	color: var(--vscode-foreground);
+}
+
+.lens-row-icon {
+	flex: 0 0 auto;
+	color: var(--vscode-foreground);
+}
+
+.lens-chevron {
+	flex: 0 0 auto;
+	opacity: 0.8;
+}
+
+.lens-tool-card {
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	overflow: hidden;
+}
+
+.lens-tool-card.error {
+	border-color: color-mix(in srgb, var(--vscode-errorForeground) 45%, var(--vscode-panel-border));
+}
+
+.lens-tool-status {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 8px;
+	min-width: 0;
+	line-height: 1.3;
+}
+
+.lens-status-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 99px;
+	background: var(--vscode-descriptionForeground);
+	flex: 0 0 auto;
+}
+
+.lens-status-dot.running {
+	background: var(--vscode-testing-iconPassed, #3fb950);
+	animation: lens-pulse 1.2s ease-in-out infinite;
+}
+
+.lens-status-dot.error {
+	background: var(--vscode-testing-iconFailed, var(--vscode-errorForeground));
+}
+
+.lens-status-dot.done {
+	background: var(--vscode-descriptionForeground);
+}
+
+@keyframes lens-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.35; }
+}
+
+.lens-status-text {
+	font-size: 13.5px;
+	font-weight: 500;
+	color: var(--vscode-descriptionForeground);
+	flex: 0 0 auto;
+}
+
+.lens-status-text.running {
+	color: var(--vscode-testing-iconPassed, #3fb950);
+}
+
+.lens-status-text.error {
+	color: var(--vscode-errorForeground);
+}
+
+.lens-tool-target {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12.5px;
+}
+
+.lens-tool-command .lens-codeblock {
+	border: 0;
+	border-radius: 0;
+	margin: 0;
+	border-top: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+}
+
+.lens-tool-command .lens-codeblock-bar {
+	display: none;
+}
+
+.lens-tool-command pre {
+	opacity: 0.7;
+}
+
+.lens-tool-more {
+	padding: 6px 10px 8px;
+}
+
+.lens-tool-output {
+	border-top: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	max-height: 200px;
+	overflow: auto;
+}
+
+.lens-tool-output .lens-codeblock {
+	border: 0;
+	border-radius: 0 0 var(--lens-radius) var(--lens-radius);
+	margin: 0;
+	overflow: hidden;
+}
+
+.lens-tool-output .lens-codeblock-bar {
+	border: 0;
+	border-radius: 0;
+	margin: 0;
+}
+
+.lens-todos {
+	list-style: none;
+	margin: 0;
+	padding: 4px 10px 10px;
+}
+
+.lens-todo {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 3px 0;
+	font-size: 12.5px;
+	line-height: 1.4;
+}
+
+.lens-todo-mark {
+	width: 8px;
+	height: 8px;
+	margin-top: 4px;
+	border-radius: 99px;
+	background: var(--vscode-descriptionForeground);
+	flex: 0 0 auto;
+}
+
+.lens-todo-completed {
+	opacity: 0.65;
+	text-decoration: line-through;
+}
+
+.lens-todo-completed .lens-todo-mark {
+	background: var(--vscode-testing-iconPassed, #3fb950);
+}
+
+.lens-todo-in_progress .lens-todo-mark {
+	background: var(--vscode-testing-iconPassed, #3fb950);
+	animation: lens-pulse 1.2s ease-in-out infinite;
+}
+
+.lens-error-row {
+	padding: 2px 0;
+}
+
+.lens-error-title {
+	font-weight: 700;
+	color: var(--vscode-errorForeground);
+}
+
+.lens-error-icon {
+	color: var(--vscode-errorForeground);
+}
+
+.lens-error-detail {
+	margin-top: 6px;
+	padding: 8px 10px;
+	font-size: 12.5px;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	color: var(--vscode-descriptionForeground);
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+}
+
+.lens-tool-error {
+	padding: 8px 10px 10px;
+	color: var(--vscode-errorForeground);
+	font-size: 12.5px;
+	line-height: 1.45;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.lens-question {
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	padding: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.lens-question-item {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.lens-question-text {
+	font-weight: 600;
+	font-size: 13.5px;
+	line-height: 1.4;
+	color: var(--lens-chat-foreground);
+}
+
+.lens-question-hint {
+	font-size: 11.5px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-question-options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.lens-question-option {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	max-width: 100%;
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	background: transparent;
+	color: var(--vscode-foreground);
+	border-radius: var(--lens-radius);
+	padding: 8px 12px;
+	cursor: pointer;
+	text-align: left;
+	font: inherit;
+}
+
+.lens-question-option:hover:not(:disabled) {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-question-option.picked,
+.lens-question-option:focus-visible {
+	border-color: var(--vscode-focusBorder, var(--vscode-button-background));
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-question-option:disabled {
+	opacity: 0.65;
+	cursor: default;
+}
+
+.lens-question-option-label {
+	font-weight: 600;
+	font-size: 12.5px;
+}
+
+.lens-question-option-desc {
+	font-size: 11.5px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-question-custom {
+	width: 100%;
+	box-sizing: border-box;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent));
+	border-radius: var(--lens-radius);
+	padding: 7px 10px;
+	font: inherit;
+}
+
+.lens-question-custom:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+.lens-question-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.lens-question-submit {
+	border: 0;
+	border-radius: var(--lens-radius);
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	padding: 6px 12px;
+	cursor: pointer;
+	font: inherit;
+}
+
+.lens-question-submit:hover:not(:disabled) {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.lens-tool-card p,
+.lens-tool-card ul,
+.lens-tool-card ol,
+.lens-filecard p,
+.lens-filecard ul,
+.lens-filecard ol {
+	margin: 0;
+}
+
+.lens-filecard-body .lens-codeblock {
+	border: 0;
+	border-radius: 0;
+	margin: 0;
+}
+
+.lens-filecard-body .lens-codeblock-bar {
+	display: none;
+}
+
+.lens-filecard-body .lens-tool-error {
+	padding: 8px 10px 10px;
+}
+
+.lens-filecards {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+}
+
+.lens-filecard {
+	min-width: 0;
+	border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	overflow: hidden;
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+}
+
+.lens-filecard.error {
+	border-color: color-mix(in srgb, var(--vscode-errorForeground) 45%, var(--vscode-panel-border));
+}
+
+.lens-filecard-head {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+
+.lens-filecard-open {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	padding: 6px 10px;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	line-height: 1.3;
+	text-align: left;
+	cursor: pointer;
+}
+
+.lens-filecard-open:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-filecard-open:disabled {
+	cursor: default;
+}
+
+.lens-filecard-badge {
+	flex: 0 0 auto;
+	font-size: 10.5px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	padding: 1px 5px;
+	border-radius: 4px;
+	background: var(--vscode-badge-background, var(--vscode-button-secondaryBackground));
+	color: var(--vscode-badge-foreground, var(--vscode-button-secondaryForeground));
+}
+
+.lens-filecard-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--vscode-foreground);
+}
+
+.lens-filecard-add {
+	flex: 0 0 auto;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.lens-filecard-del {
+	flex: 0 0 auto;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+
+.lens-filecard-label {
+	flex: 0 0 auto;
+	font-size: 11.5px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-filecard-label.running {
+	color: var(--vscode-testing-iconPassed, #3fb950);
+}
+
+.lens-filecard-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	margin-right: 4px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+}
+
+.lens-filecard-toggle:hover {
+	color: var(--vscode-foreground);
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.lens-filecard-body {
+	border-top: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	overflow: hidden;
+}
+
+.lens-diff-preview {
+	max-height: 240px;
+	overflow: auto;
+	font-family: var(--vscode-editor-font-family);
+	font-size: var(--vscode-editor-font-size, 12.5px);
+	line-height: var(--lens-code-line-height);
+	background: color-mix(in srgb, var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2)) 40%, var(--vscode-editor-background));
+}
+
+.lens-diff-line {
+	display: grid;
+	grid-template-columns: 2.6em 1.1em minmax(0, 1fr);
+	column-gap: 2px;
+	min-height: 1.45em;
+	padding: 0 8px 0 4px;
+}
+
+.lens-diff-line.lens-diff-add {
+	background: var(--vscode-diffEditor-insertedTextBackground, rgba(155, 185, 85, 0.2));
+}
+
+.lens-diff-line.lens-diff-del {
+	background: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.2));
+}
+
+.lens-diff-line.lens-diff-hunk {
+	background: var(--vscode-diffEditor-unchangedRegionBackground, var(--vscode-editorWidget-background));
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-diff-num {
+	text-align: right;
+	color: var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground));
+	user-select: none;
+	font-variant-numeric: tabular-nums;
+}
+
+.lens-diff-mark {
+	text-align: center;
+	user-select: none;
+	opacity: 0.75;
+}
+
+.lens-diff-add .lens-diff-mark {
+	color: var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.lens-diff-del .lens-diff-mark {
+	color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+}
+
+.lens-diff-code,
+.lens-diff-hunk {
+	min-width: 0;
+	overflow: hidden;
+	white-space: pre;
+	text-overflow: ellipsis;
+}
+
+.lens-diff-code,
+.lens-diff-code.hljs {
+	color: var(--vscode-editor-foreground);
+	background: transparent;
+}
+
+.lens-diff-hunk {
+	grid-column: 2 / -1;
+	font-size: 11.5px;
+}
+
+.lens-filecard-more {
+	display: block;
+	width: 100%;
+	margin: 0;
+	padding: 5px 10px;
+	border: 0;
+	border-top: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 11.5px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.lens-filecard-more:hover {
+	color: var(--vscode-foreground);
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-filecard-more.muted {
+	cursor: default;
+}
+
+.lens-timeline .lens-muted-row,
+.lens-row .lens-muted-row,
+.lens-muted-row {
+	font-size: 12.5px;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-md {
+	font-size: 13.5px;
+	line-height: var(--lens-line-height);
+	overflow-wrap: anywhere;
+	white-space: normal;
+	color: var(--lens-chat-foreground);
+}
+
+.lens-md p,
+.lens-md li,
+.lens-md h1,
+.lens-md h2,
+.lens-md h3,
+.lens-md h4,
+.lens-md th,
+.lens-md td {
+	color: inherit;
+}
+
+.lens-md > :first-child {
+	margin-top: 0;
+}
+
+.lens-md > :last-child {
+	margin-bottom: 0;
+}
+
+.lens-md p,
+.lens-md li {
+	line-height: var(--lens-line-height);
+}
+
+.lens-md p {
+	margin: 0 0 var(--lens-md-block-gap);
+}
+
+.lens-md li > p {
+	margin: 0.25em 0;
+}
+
+.lens-md li > p:first-child {
+	margin-top: 0;
+}
+
+.lens-md li > p:last-child {
+	margin-bottom: 0;
+}
+
+.lens-md ul,
+.lens-md ol {
+	margin: 0.35em 0 var(--lens-md-block-gap);
+	padding-left: 1.4em;
+}
+
+.lens-md ul {
+	list-style: disc;
+}
+
+.lens-md ol {
+	list-style: decimal;
+}
+
+.lens-md li {
+	margin: 0.12em 0;
+}
+
+.lens-md li > ul,
+.lens-md li > ol {
+	margin: 0.12em 0;
+}
+
+.lens-md h1,
+.lens-md h2,
+.lens-md h3,
+.lens-md h4 {
+	margin: 0.9em 0 0.4em;
+	font-weight: 650;
+	line-height: 1.3;
+	letter-spacing: -0.01em;
+	color: var(--lens-chat-foreground);
+}
+
+.lens-md h1 { font-size: 1.35em; }
+.lens-md h2 { font-size: 1.2em; }
+.lens-md h3 { font-size: 1.08em; }
+.lens-md h4 { font-size: 1em; }
+
+.lens-md strong {
+	font-weight: 650;
+}
+
+.lens-md a {
+	color: var(--vscode-textLink-foreground);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.lens-md a:hover {
+	color: var(--vscode-textLink-activeForeground);
+}
+
+.lens-md hr {
+	border: 0;
+	border-top: 1px solid var(--vscode-panel-border);
+	margin: 12px 0;
+}
+
+.lens-md-table-wrap {
+	max-width: 100%;
+	margin: 10px 0 var(--lens-md-block-gap);
+	overflow-x: auto;
+}
+
+.lens-md-table-wrap table,
+.lens-md table {
+	border-collapse: collapse;
+	width: 100%;
+	margin: 0;
+	font-size: 12.5px;
+}
+
+.lens-md th,
+.lens-md td {
+	padding: 6px 8px;
+	border: 1px solid var(--vscode-panel-border);
+	text-align: left;
+	vertical-align: top;
+	line-height: var(--lens-line-height);
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.lens-md th {
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	font-weight: 650;
+}
+
+.lens-md tr:nth-child(even) {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-md blockquote {
+	margin: 8px 0;
+	padding: 0 0 0 10px;
+	border-left: 3px solid var(--vscode-panel-border);
+	color: var(--vscode-descriptionForeground);
+	line-height: var(--lens-line-height);
+}
+
+.lens-md code:not(pre > code) {
+	font-family: var(--vscode-editor-font-family);
+	font-size: var(--vscode-editor-font-size, 12.5px);
+	color: var(--vscode-textPreformat-foreground, #f78383);
+	background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: 4px;
+	padding: 0 4px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.lens-codeblock {
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	overflow: hidden;
+	margin: 8px 0;
+}
+
+.lens-codeblock-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 4px 8px;
+	border-bottom: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+}
+
+.lens-codeblock-lang {
+	font-size: 11.5px;
+	color: var(--vscode-descriptionForeground);
+	text-transform: lowercase;
+}
+
+.lens-codeblock-copy {
+	border: 0;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	font-size: 11.5px;
+	padding: 2px 4px;
+	border-radius: 3px;
+}
+
+.lens-codeblock-copy:hover {
+	color: var(--vscode-foreground);
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.lens-codeblock pre {
+	margin: 0;
+	padding: 10px;
+	overflow-x: auto;
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	line-height: var(--lens-code-line-height);
+}
+
+.lens-codeblock.wrap pre,
+.lens-codeblock.wrap code {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.lens-codeblock code,
+.lens-md pre,
+.lens-timeline .hljs {
+	font-family: var(--vscode-editor-font-family);
+	font-size: var(--vscode-editor-font-size, 12.5px);
+	color: var(--vscode-editor-foreground);
+	background: transparent;
+	line-height: var(--lens-code-line-height);
+}
+
+.hljs-variable,
+.hljs-params,
+.hljs-attr,
+.hljs-attribute,
+.hljs-property,
+.hljs-selector-class,
+.hljs-selector-id,
+.hljs-constant,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-operator,
+.hljs-subst {
+	color: var(--vscode-editor-foreground);
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-tag,
+.hljs-name,
+.hljs-variable.language_ {
+	color: var(--vscode-textLink-foreground);
+}
+
+.hljs-title.function_,
+.hljs-built_in,
+.hljs-class,
+.hljs-title.class_,
+.hljs-type,
+.hljs-section,
+.hljs-title {
+	color: var(--vscode-editor-foreground);
+	font-weight: 600;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-template-string {
+	color: var(--vscode-debugTokenExpression-string);
+}
+
+.hljs-number,
+.hljs-literal {
+	color: var(--vscode-debugTokenExpression-number);
+}
+
+.hljs-comment,
+.hljs-quote {
+	color: var(--vscode-editor-foreground);
+	opacity: 0.6;
+	font-style: italic;
+}
+
+.hljs-deletion {
+	background-color: var(--vscode-diffEditor-removedTextBackground);
+	display: inline-block;
+	width: 100%;
+}
+
+.hljs-addition {
+	background-color: var(--vscode-diffEditor-insertedTextBackground);
+	display: inline-block;
+	width: 100%;
+}
+
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: bold; }
+
+.lens-composer {
+	padding: 8px 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.lens-composer-box {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	padding: 8px 8px 6px;
+	position: relative;
+}
+
+.lens-composer-box:focus-within {
+	border-color: var(--vscode-focusBorder);
+}
+
+.lens-input {
+	flex: 1;
+	resize: none;
+	min-height: 40px;
+	max-height: 160px;
+	background: transparent;
+	color: var(--vscode-input-foreground);
+	border: 0;
+	border-radius: 0;
+	padding: 4px 6px;
+	font: inherit;
+	line-height: var(--lens-line-height);
+}
+
+.lens-input:focus {
+	outline: none;
+}
+
+.lens-input::placeholder {
+	color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+}
+
+.lens-composer-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-height: 26px;
+}
+
+.lens-toolbar-spacer {
+	flex: 1;
+}
+
+.lens-select {
+	appearance: none;
+	background: transparent;
+	border: 0;
+	color: var(--vscode-descriptionForeground);
+	font-size: 11.5px;
+	line-height: 1.2;
+	padding: 2px 16px 2px 4px;
+	max-width: 120px;
+	border-radius: 4px;
+	cursor: pointer;
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'><path fill='%23888' d='M3 4.5 6 8l3-3.5'/></svg>");
+	background-repeat: no-repeat;
+	background-position: right 2px center;
+}
+
+.lens-select:hover,
+.lens-select:focus {
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+	outline: none;
+}
+
+.lens-picker-trigger {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	max-width: 42%;
+	height: 22px;
+	padding: 0 4px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--vscode-descriptionForeground);
+	font: inherit;
+	font-size: 11.5px;
+	line-height: 1.2;
+	cursor: pointer;
+}
+
+.lens-picker-trigger-model {
+	max-width: 48%;
+	flex: 0 1 auto;
+}
+
+.lens-picker-trigger-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lens-picker-chevron {
+	flex: 0 0 auto;
+	opacity: 0.7;
+}
+
+.lens-picker-trigger:hover,
+.lens-picker-trigger.open,
+.lens-picker-trigger:focus-visible {
+	color: var(--vscode-foreground);
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+	outline: none;
+}
+
+.lens-effort-chip {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+	height: 18px;
+	padding: 0 7px;
+	border-radius: 4px;
+	font-size: 11px;
+	line-height: 18px;
+	color: var(--vscode-foreground);
+	background: color-mix(in srgb, var(--vscode-charts-purple, #c4b5fd) 28%, transparent);
+	pointer-events: none;
+	user-select: none;
+}
+
+.lens-picker-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin: 2px 0 4px;
+	padding: 4px;
+	max-height: 220px;
+	overflow: auto;
+	background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+	color: var(--vscode-menu-foreground, var(--vscode-foreground));
+	border: 1px solid var(--vscode-menu-border, var(--vscode-focusBorder, var(--vscode-widget-border, var(--vscode-panel-border))));
+	border-radius: var(--lens-radius);
+	box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+
+.lens-picker-item,
+.lens-picker-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	box-sizing: border-box;
+	margin: 0;
+	padding: 6px 8px;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: 12.5px;
+	line-height: 1.3;
+	text-align: left;
+}
+
+button.lens-picker-item,
+button.lens-picker-row {
+	cursor: pointer;
+}
+
+.lens-picker-item:hover,
+button.lens-picker-row:hover,
+.lens-picker-item:focus-visible,
+button.lens-picker-row:focus-visible {
+	background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+	color: var(--vscode-menu-selectionForeground, var(--vscode-foreground));
+	border-color: var(--vscode-focusBorder, transparent);
+	outline: none;
+}
+
+.lens-picker-item.selected {
+	background: color-mix(in srgb, var(--vscode-focusBorder, #3794ff) 16%, transparent);
+}
+
+.lens-picker-value {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+
+.lens-picker-value .lens-picker-chevron {
+	opacity: 0.55;
+}
+
+.lens-picker-sep {
+	height: 1px;
+	margin: 4px 6px;
+	background: var(--vscode-menu-separatorBackground, var(--vscode-widget-border, var(--vscode-panel-border)));
+}
+
+.lens-picker-back-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.lens-model-search {
+	width: 100%;
+	box-sizing: border-box;
+	margin: 2px 0 4px;
+	padding: 6px 8px;
+	border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+	border-radius: 4px;
+	background: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	font: inherit;
+	font-size: 12px;
+}
+
+.lens-model-group {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.lens-model-group-label {
+	padding: 4px 8px 2px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.lens-picker-model-item {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+}
+
+.lens-picker-model-name {
+	font-size: 12.5px;
+}
+
+.lens-picker-model-id {
+	color: var(--vscode-descriptionForeground);
+	font-size: 11px;
+}
+
+.lens-picker-empty {
+	padding: 8px;
+	color: var(--vscode-descriptionForeground);
+	font-size: 12px;
+}
+
+.lens-send-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	cursor: pointer;
+}
+
+.lens-send-btn:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
+.lens-send-btn:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.lens-send-btn.stop {
+	background: var(--vscode-input-background);
+	color: var(--vscode-foreground);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.lens-stop-icon {
+	width: 8px;
+	height: 8px;
+	background: currentColor;
+	border-radius: 1px;
+}
+
+.lens-error {
+	color: var(--vscode-errorForeground);
+	padding: 0 14px 8px;
+	font-size: 12.5px;
+	line-height: 1.4;
+}
+
+.lens-ext-header {
+	display: flex;
+	gap: 8px;
+	padding: 8px;
+}
+
+.lens-ext-header input {
+	flex: 1;
+}
+
+.lens-ext-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	padding: 0 8px 8px;
+}
+
+.lens-section {
+	font-weight: 600;
+	padding: 8px 0 4px;
+}
+
+.lens-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px;
+	border: 1px solid var(--vscode-panel-border);
+	border-radius: var(--lens-radius);
+	margin-bottom: 8px;
+}
+
+.lens-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 99px;
+	background: var(--vscode-disabledForeground);
+	flex: 0 0 auto;
+}
+
+.lens-dot.connected {
+	background: var(--vscode-testing-iconPassed, #3fb950);
+}
+
+.lens-dot.failed, .lens-dot.needs_auth {
+	background: var(--vscode-testing-iconFailed, #f85149);
+}
+
+.lens-muted {
+	opacity: 0.75;
+	font-size: 12.5px;
+}
+
+.lens-modal {
+	position: absolute;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.45);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 20;
+}
+
+.lens-dialog {
+	width: min(360px, 92%);
+	background: var(--vscode-editorWidget-background);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	padding: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.lens-slash, .lens-suggest {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	max-height: 160px;
+	overflow: auto;
+	background: var(--vscode-editorWidget-background);
+}
+
+.lens-slash-item, .lens-suggest-item {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	background: transparent;
+	border: 0;
+	color: inherit;
+	padding: 6px 8px;
+	cursor: pointer;
+	text-align: left;
+}
+
+.lens-slash-item:hover, .lens-suggest-item:hover {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-dock {
+	padding: 8px 10px;
+}
+
+.lens-review-toggle,
+.lens-review-file {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	background: transparent;
+	border: 0;
+	color: inherit;
+	padding: 6px 0;
+	cursor: pointer;
+	text-align: left;
+}
+
+.lens-review-file {
+	border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.lens-attachments {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: flex-start;
+}
+
+.lens-attachment-thumb {
+	position: relative;
+	display: block;
+	flex: 0 0 auto;
+}
+
+.lens-attachment-remove {
+	position: absolute;
+	top: -6px;
+	right: -6px;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 12px;
+	line-height: 1;
+	cursor: pointer;
+	background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+	color: var(--vscode-foreground);
+	box-shadow: 0 0 0 1px var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.lens-attachment-remove:hover {
+	color: var(--vscode-errorForeground, var(--vscode-foreground));
+}
+
+.lens-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 11.5px;
+	padding: 2px 6px;
+	border-radius: 999px;
+	background: var(--vscode-badge-background);
+	color: var(--vscode-badge-foreground);
+}
+
+.lens-pill {
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	background: transparent;
+	color: var(--vscode-foreground);
+	border-radius: 999px;
+	padding: 2px 8px;
+	cursor: pointer;
+}
+
+.lens-pills {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.lens-lightbox {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: color-mix(in srgb, #000 72%, transparent);
+	cursor: zoom-out;
+}
+
+.lens-lightbox:focus {
+	outline: none;
+}
+
+.lens-lightbox-toolbar {
+	position: absolute;
+	top: 10px;
+	right: 10px;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 4px;
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--vscode-editorWidget-background, #1e1e1e) 92%, transparent);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+	cursor: default;
+}
+
+.lens-lightbox-btn,
+.lens-lightbox-zoom {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 28px;
+	height: 28px;
+	padding: 0 6px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-foreground);
+	cursor: pointer;
+}
+
+.lens-lightbox-btn:hover,
+.lens-lightbox-zoom:hover {
+	background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.lens-lightbox-zoom {
+	min-width: 46px;
+	font-size: 11.5px;
+	font-variant-numeric: tabular-nums;
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-lightbox-stage {
+	max-width: 90vw;
+	max-height: 85vh;
+	overflow: auto;
+	cursor: default;
+}
+
+.lens-lightbox-image {
+	display: block;
+	max-width: 90vw;
+	max-height: 85vh;
+	width: auto;
+	height: auto;
+	object-fit: contain;
+	user-select: none;
+}

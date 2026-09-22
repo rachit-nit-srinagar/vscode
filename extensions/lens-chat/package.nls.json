@@ -1,0 +1,11 @@
+{
+  "displayName": "Lens Chat",
+  "description": "Cursor-style agent chat pane for Lens",
+  "container.chat": "Chat",
+  "container.extensions": "Lens",
+  "view.title": "Chat",
+  "view.extensions": "Extensions",
+  "command.openChat": "Open Chat",
+  "command.newChat": "New Chat",
+  "command.history": "History"
+}
