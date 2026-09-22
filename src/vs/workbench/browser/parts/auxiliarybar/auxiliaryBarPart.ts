@@ -49,6 +49,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 	static readonly pinnedViewsKey = 'workbench.auxiliarybar.pinnedPanels';
 	static readonly placeholdeViewContainersKey = 'workbench.auxiliarybar.placeholderPanels';
 	static readonly viewContainersWorkspaceStateKey = 'workbench.auxiliarybar.viewContainersWorkspaceState';
+	private static readonly LENS_CHAT_CONTAINER_ID = 'workbench.view.extension.lens-chat';
 
 	// Use the side bar dimensions
 	override readonly minimumWidth: number = 170;
@@ -133,6 +134,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		// Track visible view containers for auto-hide
 		this.visibleViewContainersTracker = this._register(instantiationService.createInstance(VisibleViewContainersTracker, ViewContainerLocation.AuxiliaryBar));
 		this._register(this.visibleViewContainersTracker.onDidChange((e) => this.onDidChangeAutoHideViewContainers(e)));
+		this._register(this.onDidPaneCompositeOpen(composite => this.updateLensChatTitleArea(composite.getId())));
 
 		this.configuration = this.resolveConfiguration();
 
@@ -188,6 +190,23 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		if (id) {
 			this.onTitleAreaUpdate(id);
 		}
+		this.updateLensChatTitleArea(id);
+	}
+
+	override create(parent: HTMLElement): void {
+		super.create(parent);
+		this.updateLensChatTitleArea(this.getActivePaneComposite()?.getId() ?? this.getLastActivePaneCompositeId());
+	}
+
+	/**
+	 * Lens Chat draws session tabs in its webview. The native composite title
+	 * ("CHAT") cannot host those tabs and otherwise occupies a second row above
+	 * them, so hide the entire title row (label + view/title actions) for this
+	 * container. Maximize/close live in this same title row, so they hide with
+	 * it rather than sitting on an empty bar above the tabs.
+	 */
+	private updateLensChatTitleArea(compositeId: string | undefined): void {
+		this.setTitleAreaVisible(compositeId !== AuxiliaryBarPart.LENS_CHAT_CONTAINER_ID);
 	}
 
 	override updateStyles(): void {

@@ -8,6 +8,11 @@
 	visibility: hidden !important;
 }
 
+.monaco-workbench .part.auxiliarybar.hidden-title > .title {
+	display: none !important;
+	height: 0 !important;
+}
+
 .monaco-workbench .part.auxiliarybar > .content .monaco-editor,
 .monaco-workbench .part.auxiliarybar > .content .monaco-editor .margin,
 .monaco-workbench .part.auxiliarybar > .content .monaco-editor .monaco-editor-background {

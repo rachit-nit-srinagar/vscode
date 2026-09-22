@@ -160,6 +160,16 @@ export abstract class Part<MementoType extends object = object> extends Componen
 		}
 	}
 
+	/**
+	 * Collapse the part title row so content can start at the top of the pane.
+	 * Used when a composite draws its own toolbar (for example Lens Chat tabs).
+	 */
+	protected setTitleAreaVisible(visible: boolean): void {
+		this.partLayout?.setTitleVisibility(visible);
+		this.parent?.classList.toggle('hidden-title', !visible);
+		this.relayout();
+	}
+
 	private relayout() {
 		const dimension = this.getRelayoutDimension();
 		if (dimension && this.contentPosition) {
@@ -223,6 +233,7 @@ class PartLayout {
 
 	private headerVisible: boolean = false;
 	private footerVisible: boolean = false;
+	private titleVisible: boolean = true;
 
 	constructor(
 		private options: IPartOptions,
@@ -233,7 +244,7 @@ class PartLayout {
 	layout(width: number, height: number): ILayoutContentResult {
 		// Title Size: Width (Fill), Height (Variable).
 		let titleSize: Dimension;
-		if (this.options.hasTitle) {
+		if (this.options.hasTitle && this.titleVisible) {
 			const titleHeight = this.layoutService.isFloatingPanelsEnabled() ? PartLayout.AREA_HEIGHT_MODERN_UI : PartLayout.TITLE_HEIGHT;
 			titleSize = new Dimension(width, Math.min(height, titleHeight));
 		} else {
@@ -272,6 +283,10 @@ class PartLayout {
 		}
 
 		return { headerSize, titleSize, contentSize, footerSize };
+	}
+
+	setTitleVisibility(visible: boolean): void {
+		this.titleVisible = visible;
 	}
 
 	setFooterVisibility(visible: boolean): void {
