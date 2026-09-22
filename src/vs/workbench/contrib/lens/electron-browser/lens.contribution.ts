@@ -5,7 +5,7 @@
 import { localize, localize2 } from '../../../../nls.js';
 import { ILocalizedString } from '../../../../platform/action/common/action.js';
 import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
-import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from '../../../../platform/configuration/common/configurationRegistry.js';
+import { ConfigurationScope, IConfigurationRegistry, Extensions as ConfigurationExtensions } from '../../../../platform/configuration/common/configurationRegistry.js';
 import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { ILensEngineRestartService } from '../../../../platform/lensEngine/common/lensEngineRestart.js';
@@ -16,10 +16,9 @@ import { Registry } from '../../../../platform/registry/common/platform.js';
 
 const LENS_CATEGORY: ILocalizedString = localize2('lens', 'Lens');
 
-async function restartLensEngine(accessor: ServicesAccessor): Promise<void> {
-	const notificationService = accessor.get(INotificationService);
+async function restartLensEngine(lensEngineRestartService: ILensEngineRestartService, notificationService: INotificationService): Promise<void> {
 	try {
-		await accessor.get(ILensEngineRestartService).restart();
+		await lensEngineRestartService.restart();
 		notificationService.info(localize('lens.liteLlm.engineRestarted', "Lens engine restarted with the updated LiteLLM configuration."));
 	} catch (error) {
 		notificationService.error(localize('lens.liteLlm.engineRestartFailed', "Lens engine did not restart: {0}", error instanceof Error ? error.message : String(error)));
@@ -39,6 +38,8 @@ class ConfigureLiteLlmConnectionAction extends Action2 {
 	async run(accessor: ServicesAccessor): Promise<void> {
 		const quickInputService = accessor.get(IQuickInputService);
 		const configurationService = accessor.get(IConfigurationService);
+		const lensEngineRestartService = accessor.get(ILensEngineRestartService);
+		const notificationService = accessor.get(INotificationService);
 
 		const baseUrl = await quickInputService.input({
 			prompt: localize('lens.liteLlm.baseUrlPrompt', "LiteLLM base URL (e.g. https://litellm.example.com)"),
@@ -48,7 +49,7 @@ class ConfigureLiteLlmConnectionAction extends Action2 {
 			return;
 		}
 		await configurationService.updateValue('lens.liteLlm.baseUrl', baseUrl.trim(), ConfigurationTarget.USER);
-		await restartLensEngine(accessor);
+		await restartLensEngine(lensEngineRestartService, notificationService);
 	}
 }
 
@@ -66,6 +67,7 @@ class SetLiteLlmApiKeyAction extends Action2 {
 		const quickInputService = accessor.get(IQuickInputService);
 		const lensLiteLlmConfigService = accessor.get(ILensLiteLlmConfigService);
 		const notificationService = accessor.get(INotificationService);
+		const lensEngineRestartService = accessor.get(ILensEngineRestartService);
 
 		const apiKey = await quickInputService.input({
 			prompt: localize('lens.liteLlm.apiKeyPrompt', "LiteLLM API key (stored encrypted; leave empty to clear)"),
@@ -76,7 +78,7 @@ class SetLiteLlmApiKeyAction extends Action2 {
 		}
 		await lensLiteLlmConfigService.setApiKey(apiKey.trim() || undefined);
 		notificationService.notify({ severity: Severity.Info, message: localize('lens.liteLlm.apiKeySaved', "LiteLLM API key saved.") });
-		await restartLensEngine(accessor);
+		await restartLensEngine(lensEngineRestartService, notificationService);
 	}
 }
 
@@ -95,6 +97,7 @@ class SelectLiteLlmModelsAction extends Action2 {
 		const configurationService = accessor.get(IConfigurationService);
 		const lensLiteLlmConfigService = accessor.get(ILensLiteLlmConfigService);
 		const notificationService = accessor.get(INotificationService);
+		const lensEngineRestartService = accessor.get(ILensEngineRestartService);
 
 		const baseUrl = configurationService.getValue<string>('lens.liteLlm.baseUrl');
 		if (!baseUrl) {
@@ -125,7 +128,7 @@ class SelectLiteLlmModelsAction extends Action2 {
 		}
 		const selectedIds = result.map(pick => pick.id);
 		await configurationService.updateValue('lens.liteLlm.enabledModels', selectedIds.length === models.length ? [] : selectedIds, ConfigurationTarget.USER);
-		await restartLensEngine(accessor);
+		await restartLensEngine(lensEngineRestartService, notificationService);
 	}
 }
 
@@ -141,11 +144,15 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 		properties: {
 			'lens.liteLlm.baseUrl': {
 				type: 'string',
+				// Application scope: a workspace must not be able to redirect the stored API key.
+				scope: ConfigurationScope.APPLICATION,
 				default: '',
 				description: localize('lens.liteLlm.baseUrl.description', "Base URL of your LiteLLM proxy. Falls back to the LITELLM_BASE_URL environment variable when unset."),
 			},
 			'lens.liteLlm.enabledModels': {
 				type: 'array',
+				// Application scope: a workspace must not be able to redirect the stored API key.
+				scope: ConfigurationScope.APPLICATION,
 				items: { type: 'string' },
 				default: [],
 				description: localize('lens.liteLlm.enabledModels.description', "Model ids from LiteLLM to expose in Lens. Empty means all models LiteLLM reports are exposed. Use \"Lens: Select LiteLLM Models\" to edit this from a picker."),

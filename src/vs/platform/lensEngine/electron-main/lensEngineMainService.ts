@@ -52,8 +52,6 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	private starting: Promise<ILensEngineInfo | undefined> | undefined;
 	private restarts = 0;
 	private disposed = false;
-	/** Set around an intentional restart so the crash-recovery exit handler doesn't also react. */
-	private restarting = false;
 	private readonly discoveryFile = join(tmpdir(), `lens-engine-${process.pid}.json`);
 
 	constructor(
@@ -80,9 +78,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 
 	async restart(): Promise<ILensEngineInfo | undefined> {
 		this.logService.info('[LensEngine] restarting to pick up LiteLLM connection/model changes');
-		this.restarting = true;
 		this.teardown();
-		this.restarting = false;
 		this.restarts = 0;
 		this.starting = undefined;
 		return this.start();
@@ -153,8 +149,12 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		child.stdout?.on('data', data => this.logService.trace(`[LensEngine] ${String(data).trimEnd()}`));
 		child.stderr?.on('data', data => this.logService.info(`[LensEngine] ${String(data).trimEnd()}`));
 		child.on('exit', code => {
+			// Ignore exits of engines we replaced or stopped on purpose; only the current one may trigger a restart.
+			if (this.child !== child) {
+				return;
+			}
 			this.child = undefined;
-			if (this.disposed || this.restarting) {
+			if (this.disposed) {
 				return;
 			}
 			this.logService.warn(`[LensEngine] engine exited with code ${code}`);
@@ -198,7 +198,9 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	}
 
 	private teardown(): void {
-		this.child?.kill();
+		const child = this.child;
+		this.child = undefined;
+		child?.kill();
 		this.facade?.dispose();
 		if (this.info) {
 			fs.rm(this.discoveryFile, { force: true }).catch(() => undefined);

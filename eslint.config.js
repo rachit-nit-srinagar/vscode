@@ -3015,6 +3015,8 @@ export default defineConfig(
 		files: [
 			'src/vs/platform/lensEngine/**',
 			'src/vs/platform/lensProxy/**',
+			'src/vs/workbench/contrib/lens/**',
+			'src/vs/workbench/services/lensEngine/**',
 			'extensions/lens-chat/**',
 		],
 		rules: {
