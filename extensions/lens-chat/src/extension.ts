@@ -8,6 +8,8 @@ import type { HostToWebview, ILensUserConfig, McpConfig, PromptPart, WebviewToHo
 
 const LENS_DIFF_SCHEME = 'lens-diff';
 
+const FIRST_LAUNCH_KEY = 'lens.chat.openedOnce';
+
 export function activate(context: ExtensionContext): void {
 	const diffs = new LensDiffContentProvider();
 	const host = new LensChatHost(context, diffs);
@@ -29,6 +31,13 @@ export function activate(context: ExtensionContext): void {
 			host.postChat({ type: 'command', action: 'history' });
 		}),
 	);
+	// The secondary sidebar is visible by default (configurationDefaults), but a fresh profile has no view
+	// selected inside it, so Lens Chat stays empty until the user clicks its tab. Select it once, the first
+	// time this profile ever activates, without fighting the user's own choice on every later launch.
+	if (!context.globalState.get(FIRST_LAUNCH_KEY)) {
+		context.globalState.update(FIRST_LAUNCH_KEY, true);
+		commands.executeCommand('lens.chat.focus');
+	}
 }
 
 class LensWebviewView implements WebviewViewProvider {
