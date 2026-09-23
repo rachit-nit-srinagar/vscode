@@ -76,7 +76,8 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 /** Provider failures arrive as `info.error` on an assistant message with no parts. */
 function messageError(message: ChatMessage): string | undefined {
 	const error = message.info?.error;
-	if (!error) {
+	// A user-initiated Stop leaves the same shape on the message; it is not a failure to report.
+	if (!error || error.name === 'MessageAbortedError') {
 		return undefined;
 	}
 	const text = error.data?.message ?? error.message ?? error.name ?? 'Unknown error';

@@ -336,7 +336,11 @@ function ChatApp() {
 			const failure = event?.properties?.error;
 			const sessionID = event?.properties?.sessionID;
 			if (!sessionID || sessionID === active()) {
-				setError(String(failure?.data?.message ?? failure?.message ?? failure?.name ?? 'The model returned an error'));
+				// A user-initiated Stop surfaces the same event as a real failure; the button already
+				// shows the change, so this is not an error worth a card.
+				if (failure?.name !== 'MessageAbortedError') {
+					setError(String(failure?.data?.message ?? failure?.message ?? failure?.name ?? 'The model returned an error'));
+				}
 				setBusy(false);
 				if (active()) {
 					vscode.postMessage({ type: 'session.messages', sessionID: active() });
