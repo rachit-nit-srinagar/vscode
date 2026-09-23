@@ -40,6 +40,7 @@ export type WebviewToHost =
 	| { type: 'session.update'; sessionID: string; title?: string; archived?: boolean }
 	| { type: 'session.prompt'; sessionID: string; text: string; agent?: string; variant?: string; model?: SessionPromptModel; parts?: PromptPart[] }
 	| { type: 'session.abort'; sessionID: string }
+	| { type: 'session.status' }
 	| { type: 'session.messages'; sessionID: string }
 	| { type: 'session.command'; sessionID: string; command: string; arguments?: string; agent?: string; variant?: string }
 	| { type: 'find.files'; query: string }

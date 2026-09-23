@@ -211,6 +211,12 @@ class LensChatHost {
 				this.post(webview, { type: 'result', requestType: message.type, data });
 				return;
 			}
+			case 'session.status': {
+				// A map of sessionID to its run status; idle sessions are left out.
+				const data = await client.request('GET', '/session/status');
+				this.post(webview, { type: 'result', requestType: message.type, data: data ?? {} });
+				return;
+			}
 			case 'session.messages': {
 				const data = await client.request('GET', `/session/${encodeURIComponent(message.sessionID)}/message`);
 				this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });

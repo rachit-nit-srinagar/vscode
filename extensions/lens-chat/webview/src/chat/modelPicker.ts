@@ -20,19 +20,43 @@ const GROUP_LABELS: Record<string, string> = {
 	azure: 'Azure',
 	gcp: 'GCP',
 	aws: 'AWS',
+	google: 'Google',
 	other: 'Other',
 };
 
+const GROUP_ORDER = ['azure', 'gcp', 'aws', 'google', 'other'];
+const CLOUD_PREFIXES = new Set(['azure', 'gcp', 'aws']);
+// Route segments that name Google's Gemini API: the AI Providers `gemini` type, LiteLLM's `gemini/` and
+// OpenRouter's `google/` namespaces.
+const GOOGLE_SEGMENTS = new Set(['gemini', 'google']);
+const GOOGLE_MODEL = /^(gemini|gemma)(-|$)/;
+
+// Agent products (e.g. "Antigravity Agent Preview") that a provider lists next to its chat models but that
+// cannot run as a chat model. The provider data carries no capability that tells them apart (only name,
+// vision and limits reach the webview), so they are recognised by name; the main-process model listing
+// already drops the other agent-only families (deep-research, computer-use).
+const AGENT_ONLY_MODEL = /\bantigravity\b/i;
+
+/**
+ * Picks the picker group for a model id such as `gcp/claude-5-sonnet`, `gemini/gemini-2.5-pro`,
+ * `openrouter/google/gemini-2.5-pro` or `litellm/vertex_ai/gemini-2.5-flash`.
+ * A leading cloud prefix wins; otherwise Gemini and Gemma models go to Google.
+ */
 export function deriveModelGroup(modelId: string): string {
-	const slash = modelId.indexOf('/');
-	if (slash <= 0) {
-		return 'other';
-	}
-	const prefix = modelId.slice(0, slash).toLowerCase();
-	if (prefix === 'azure' || prefix === 'gcp' || prefix === 'aws') {
+	const segments = modelId.toLowerCase().split('/').filter(Boolean);
+	const prefix = segments.length > 1 ? segments[0] : undefined;
+	if (prefix && CLOUD_PREFIXES.has(prefix)) {
 		return prefix;
 	}
+	const name = segments[segments.length - 1] ?? '';
+	if (GOOGLE_MODEL.test(name) || segments.slice(0, -1).some(segment => GOOGLE_SEGMENTS.has(segment))) {
+		return 'google';
+	}
 	return 'other';
+}
+
+export function isAgentOnlyModel(modelId: string, name?: string): boolean {
+	return AGENT_ONLY_MODEL.test(modelId) || (!!name && AGENT_ONLY_MODEL.test(name));
 }
 
 export function parseModelChoices(data: unknown): ModelChoice[] {
@@ -43,6 +67,9 @@ export function parseModelChoices(data: unknown): ModelChoice[] {
 		for (const [modelID, info] of Object.entries(models)) {
 			const id = (info && typeof info === 'object' && 'id' in info && typeof info.id === 'string' && info.id) || modelID;
 			const name = (info && typeof info === 'object' && 'name' in info && typeof info.name === 'string' && info.name) || shortModelLabel(id);
+			if (isAgentOnlyModel(id, name)) {
+				continue;
+			}
 			const capabilities = info && typeof info === 'object' && 'capabilities' in info ? info.capabilities : undefined;
 			const supportsImage = !!(capabilities && typeof capabilities === 'object' && 'input' in capabilities
 				&& capabilities.input && typeof capabilities.input === 'object' && 'image' in capabilities.input
@@ -68,8 +95,7 @@ export function groupModelChoices(choices: ModelChoice[]): ModelGroup[] {
 		grouped.set(key, bucket);
 	}
 
-	const order = ['azure', 'gcp', 'aws', 'other'];
-	return order
+	return GROUP_ORDER
 		.filter(key => grouped.has(key))
 		.map(key => ({
 			key,

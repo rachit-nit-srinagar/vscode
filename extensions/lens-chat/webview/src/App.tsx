@@ -46,6 +46,9 @@ type FileDiff = { path: string; status?: string; additions?: number; deletions?:
 
 const view = document.getElementById('root')?.dataset.view ?? 'chat';
 const EFFORTS = ['none', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+// Speech recognition is missing in the Electron webview, so the Voice button is only shown where it can work.
+const SpeechRecognitionCtor = (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognition }).webkitSpeechRecognition
+	?? (window as unknown as { SpeechRecognition?: new () => SpeechRecognition }).SpeechRecognition;
 type PickerKind = 'agent' | 'model';
 
 export function App() {
@@ -98,6 +101,9 @@ function ChatApp() {
 	let pendingCommand: PendingCommand | undefined;
 	// Restoring open tabs happens once, off the first session.list reply after boot.
 	let restoreTabsOnBoot = false;
+	// Counts turns the user starts, so a status reply requested before a new turn began cannot mark it idle.
+	let turnSeq = 0;
+	let statusSeq = -1;
 	const slashCatalog: SlashItem[] = [];
 
 	const visibleAgents = createMemo(() => {
@@ -193,6 +199,18 @@ function ChatApp() {
 				if (lightbox()) {
 					return;
 				}
+				if (deleteConfirm()) {
+					setDeleteConfirm(null);
+					return;
+				}
+				if (picker()) {
+					closePicker();
+					return;
+				}
+				if (historyOpen()) {
+					setHistoryOpen(false);
+					return;
+				}
 				closePicker();
 			}
 		};
@@ -255,6 +273,12 @@ function ChatApp() {
 			if (queuedCommand) {
 				runCommand(session.id!, queuedCommand.command, queuedCommand.arguments);
 			}
+		} else if (requestType === 'session.status') {
+			if (statusSeq !== turnSeq) {
+				return;
+			}
+			const status = active() ? (data as Record<string, { type?: string }> | undefined)?.[active()!] : undefined;
+			setBusy(!!status && status.type !== 'idle');
 		} else if (requestType === 'session.list') {
 			const list = Array.isArray(data) ? data as HistoryItem[] : [];
 			setHistory(list);
@@ -269,6 +293,7 @@ function ChatApp() {
 					setTabs(restored);
 					const activeId = saved.activeTab && restored.some(tab => tab.id === saved.activeTab) ? saved.activeTab : restored[0].id;
 					setActive(activeId);
+					syncBusy();
 					vscode.postMessage({ type: 'session.messages', sessionID: activeId });
 					vscode.postMessage({ type: 'session.diff', sessionID: activeId });
 				}
@@ -387,7 +412,9 @@ function ChatApp() {
 				if (failure?.name !== 'MessageAbortedError') {
 					setError(String(failure?.data?.message ?? failure?.message ?? failure?.name ?? 'The model returned an error'));
 				}
-				setBusy(false);
+				// The engine keeps running after some errors (a context overflow is followed by compaction),
+				// so ask for its status instead of assuming the run ended.
+				syncBusy();
 				if (active()) {
 					vscode.postMessage({ type: 'session.messages', sessionID: active() });
 				}
@@ -406,7 +433,12 @@ function ChatApp() {
 			return;
 		}
 		if (eventType === 'session.status' && status?.type === 'busy' && ownSession) {
+			setBusy(true);
 			return;
+		}
+		if (eventType === 'permission.asked') {
+			// A run waiting on the user is still running, and Stop must stay available.
+			setBusy(true);
 		}
 		if (eventType.includes('session.status') || eventType === 'session.idle') {
 			if (active()) {
@@ -441,6 +473,8 @@ function ChatApp() {
 		setHistoryOpen(false);
 		setBusy(false);
 		setActive(id);
+		// The chat being opened may still be running (for example, waiting on a permission).
+		syncBusy();
 		setMessages([]);
 		setReviewDiffs([]);
 		vscode.postMessage({ type: 'session.messages', sessionID: id });
@@ -457,8 +491,14 @@ function ChatApp() {
 		vscode.postMessage({ type: 'session.close', sessionID: id });
 	}
 
+	function syncBusy() {
+		statusSeq = turnSeq;
+		vscode.postMessage({ type: 'session.status' });
+	}
+
 	function promptSession(sessionID: string, text: string, parts: PendingPrompt['parts']) {
 		const ref = parseModelRef(model());
+		turnSeq++;
 		setBusy(true);
 		setMessages(current => [...current, { info: { role: 'user' }, parts }]);
 		vscode.postMessage({
@@ -522,6 +562,7 @@ function ChatApp() {
 	}
 
 	function runCommand(sessionID: string, command: string, args: string) {
+		turnSeq++;
 		setBusy(true);
 		vscode.postMessage({
 			type: 'session.command',
@@ -552,18 +593,16 @@ function ChatApp() {
 	}
 
 	function dictate() {
-		const Speech = (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognition }).webkitSpeechRecognition
-			?? (window as unknown as { SpeechRecognition?: new () => SpeechRecognition }).SpeechRecognition;
-		if (!Speech) {
-			setError('Voice input is not available in this panel.');
+		if (!SpeechRecognitionCtor) {
 			return;
 		}
-		const rec = new Speech();
+		const rec = new SpeechRecognitionCtor();
 		rec.lang = 'en-US';
 		rec.onresult = event => {
 			const said = Array.from(event.results).map(result => result[0]?.transcript ?? '').join(' ');
 			setDraft(current => `${current}${current ? ' ' : ''}${said}`);
 		};
+		rec.onerror = event => setError(`Voice input failed: ${event.error}`);
 		rec.start();
 	}
 
@@ -630,6 +669,11 @@ function ChatApp() {
 		event.preventDefault();
 		await addImageFiles(files);
 	}
+
+	const historyEmpty = createMemo(() => {
+		const groups = groupedHistory();
+		return !groups.recent.length && !groups.older.length && !groups.archived.length;
+	});
 
 	function groupedHistory() {
 		const now = Date.now();
@@ -806,6 +850,9 @@ function ChatApp() {
 								</Show>
 							)}
 						</For>
+						<Show when={historyEmpty()}>
+							<div class="lens-history-empty">{historyQuery().trim() ? 'No chats match your search.' : 'No chats yet.'}</div>
+						</Show>
 					</div>
 				</Show>
 				<Show when={deleteConfirm()}>
@@ -1088,7 +1135,7 @@ function ChatApp() {
 						<div class="lens-composer-toolbar">
 							<button
 								type="button"
-								class={`lens-picker-trigger ${picker() === 'agent' ? 'open' : ''}`}
+								class={`lens-picker-trigger lens-picker-trigger-agent ${picker() === 'agent' ? 'open' : ''}`}
 								aria-haspopup="menu"
 								aria-expanded={picker() === 'agent'}
 								title={agentTriggerLabel()}
@@ -1124,9 +1171,11 @@ function ChatApp() {
 									event.currentTarget.value = '';
 								}}
 							/>
-							<button class="lens-icon-btn" title="Voice" onClick={dictate}>
-								<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 1.5a2 2 0 0 0-2 2v4a2 2 0 1 0 4 0v-4a2 2 0 0 0-2-2Zm-3.5 6a.75.75 0 0 0-1.5 0 5 5 0 0 0 4.25 4.94V14H5.75a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5H8.75v-1.56A5 5 0 0 0 13 7.5a.75.75 0 0 0-1.5 0 3.5 3.5 0 1 1-7 0Z" /></svg>
-							</button>
+							<Show when={SpeechRecognitionCtor}>
+								<button class="lens-icon-btn" title="Voice" onClick={dictate}>
+									<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 1.5a2 2 0 0 0-2 2v4a2 2 0 1 0 4 0v-4a2 2 0 0 0-2-2Zm-3.5 6a.75.75 0 0 0-1.5 0 5 5 0 0 0 4.25 4.94V14H5.75a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5H8.75v-1.56A5 5 0 0 0 13 7.5a.75.75 0 0 0-1.5 0 3.5 3.5 0 1 1-7 0Z" /></svg>
+								</button>
+							</Show>
 							<button
 								class={`lens-send-btn ${busy() ? 'stop' : ''}`}
 								title={busy() ? 'Stop' : 'Send'}
@@ -1246,4 +1295,5 @@ interface SpeechRecognition {
 	lang: string;
 	start(): void;
 	onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+	onerror: ((event: { error: string }) => void) | null;
 }

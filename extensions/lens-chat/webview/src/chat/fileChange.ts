@@ -233,26 +233,31 @@ export function parseUnifiedDiff(diff: string): { lines: DiffLine[]; additions: 
 	let deletions = 0;
 	let newLine = 0;
 	let oldLine = 0;
-	for (const raw of diff.replace(/\r\n/g, '\n').split('\n')) {
+	// File headers (`Index: /abs/path`, `====`, `--- a`, `+++ b`, `diff --git`...) sit before the first hunk
+	// of each file. They are meta: the card header already names the file, and they carry absolute paths.
+	// Only classify them outside a hunk body, so a deleted `-- comment` line is not mistaken for `--- `.
+	let inHeader = true;
+	const rawLines = diff.replace(/\r\n/g, '\n').split('\n');
+	if (rawLines.length > 1 && rawLines.at(-1) === '') {
+		rawLines.pop();
+	}
+	for (const raw of rawLines) {
 		if (raw.startsWith('@@')) {
 			const match = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
 			if (match) {
 				oldLine = Number(match[1]);
 				newLine = Number(match[2]);
 			}
+			inHeader = false;
 			lines.push({ kind: 'hunk', text: raw, marker: '' });
 			continue;
 		}
-		if (
-			raw.startsWith('diff ')
-			|| raw.startsWith('index ')
-			|| raw.startsWith('--- ')
-			|| raw.startsWith('+++ ')
-			|| raw.startsWith('new file')
-			|| raw.startsWith('deleted file')
-			|| raw.startsWith('similarity ')
-			|| raw.startsWith('rename ')
-		) {
+		if (startsFileHeader(raw)) {
+			inHeader = true;
+			lines.push({ kind: 'meta', text: raw, marker: '' });
+			continue;
+		}
+		if (inHeader && isFileHeaderLine(raw)) {
 			lines.push({ kind: 'meta', text: raw, marker: '' });
 			continue;
 		}
@@ -286,6 +291,25 @@ export function parseUnifiedDiff(diff: string): { lines: DiffLine[]; additions: 
 	return { lines, additions, deletions, addedLines };
 }
 
+/** Lines that open a new file's header block, wherever they appear in a (multi-file) patch. */
+function startsFileHeader(raw: string): boolean {
+	return raw.startsWith('Index: ') || raw.startsWith('diff ');
+}
+
+/** Lines that belong to a file header block (before that file's first `@@` hunk). */
+function isFileHeaderLine(raw: string): boolean {
+	return /^={3,}\s*$/.test(raw)
+		|| raw.startsWith('index ')
+		|| raw.startsWith('--- ')
+		|| raw.startsWith('+++ ')
+		|| raw.startsWith('new file')
+		|| raw.startsWith('deleted file')
+		|| raw.startsWith('old mode')
+		|| raw.startsWith('new mode')
+		|| raw.startsWith('similarity ')
+		|| raw.startsWith('rename ');
+}
+
 function synthesizeAdditionDiff(content: string): string {
 	if (!content) {
 		return '';
@@ -312,13 +336,14 @@ function synthesizeEditDiff(oldString: string, newString: string): string {
 }
 
 function pathFromPatch(patch: string): string {
-	const plus = patch.match(/^\+\+\+ [ab]\/(.+)$/m);
-	if (plus?.[1] && plus[1] !== '/dev/null') {
-		return plus[1].trim();
-	}
-	const minus = patch.match(/^--- [ab]\/(.+)$/m);
-	if (minus?.[1] && minus[1] !== '/dev/null') {
-		return minus[1].trim();
+	// Only look at the header, never inside a hunk body where `+++ x` could be an added line.
+	const hunk = patch.search(/^@@/m);
+	const header = hunk >= 0 ? patch.slice(0, hunk) : patch;
+	for (const pattern of [/^\+\+\+ (?:[ab]\/)?([^\t\n]+)/m, /^--- (?:[ab]\/)?([^\t\n]+)/m, /^Index: ([^\t\n]+)/m]) {
+		const found = header.match(pattern)?.[1]?.trim();
+		if (found && found !== '/dev/null') {
+			return found;
+		}
 	}
 	const addFile = patch.match(/\*\*\* (?:Add|Update|Delete) File: (.+)$/m);
 	return addFile?.[1]?.trim() ?? '';
