@@ -291,7 +291,6 @@ function ChatApp() {
 				kind: 'file' as const,
 				label: file,
 				insert: file,
-				detail: 'file',
 			}))));
 		} else if (requestType === 'find.symbols') {
 			const symbols = Array.isArray(data) ? data as Array<{ name?: string; location?: { uri?: string } }> : [];
