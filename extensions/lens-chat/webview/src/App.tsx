@@ -87,6 +87,7 @@ function ChatApp() {
 	const [mentions, setMentions] = createSignal<MentionItem[]>([]);
 	const [reviewDiffs, setReviewDiffs] = createSignal<FileDiff[]>([]);
 	const [reviewOpen, setReviewOpen] = createSignal(false);
+	const [deleteConfirm, setDeleteConfirm] = createSignal<{ id: string; title: string } | null>(null);
 	const [slash, setSlash] = createSignal<SlashItem[]>([]);
 	const [slashOpen, setSlashOpen] = createSignal(false);
 	const [attachments, setAttachments] = createSignal<Attachment[]>([]);
@@ -787,7 +788,7 @@ function ChatApp() {
 												}}>{item.title ? formatSessionTitle(item.title) : item.id}</button>
 												<span class="lens-history-actions">
 													<button class="lens-text-btn" onClick={() => vscode.postMessage({ type: 'session.update', sessionID: item.id, archived: true })}>Archive</button>
-													<button class="lens-text-btn" onClick={() => vscode.postMessage({ type: 'session.delete', sessionID: item.id })}>Delete</button>
+													<button class="lens-text-btn" onClick={() => setDeleteConfirm({ id: item.id, title: item.title ? formatSessionTitle(item.title) : item.id })}>Delete</button>
 												</span>
 											</div>
 										)}
@@ -796,6 +797,23 @@ function ChatApp() {
 							)}
 						</For>
 					</div>
+				</Show>
+				<Show when={deleteConfirm()}>
+					{item => (
+						<div class="lens-modal">
+							<div class="lens-dialog">
+								<strong>Delete chat?</strong>
+								<div class="lens-muted">"{item().title}" will be permanently deleted.</div>
+								<div class="lens-input-row">
+									<button class="lens-icon" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+									<button class="lens-send" onClick={() => {
+										vscode.postMessage({ type: 'session.delete', sessionID: item().id });
+										setDeleteConfirm(null);
+									}}>Delete</button>
+								</div>
+							</div>
+						</div>
+					)}
 				</Show>
 				<div class="lens-timeline" ref={timeline} onClick={event => {
 					handleImageThumbClick(event);
