@@ -296,6 +296,14 @@ function engineConfig(facade: ILensFacadeAddress, models: ILensUpstreamModel[]) 
 			edit: 'ask',
 			external_directory: 'ask',
 		},
+		// Plan mode must never edit, whatever the global default above says: that rule is merged onto every
+		// agent including plan, and since the merge happens after plan's own built-in deny, it would otherwise
+		// win and turn "denied" into "ask" (one Allow tap would then let Plan mode write).
+		agent: {
+			plan: {
+				permission: { edit: 'deny' },
+			},
+		},
 		model: `lens/${defaultModel.id}`,
 		provider: {
 			lens: {
@@ -382,10 +390,23 @@ function sanitizeUserConfig(value: unknown): ILensUserOpencodeConfig {
 
 function mergeUserConfig(managed: Record<string, unknown>, user: ILensUserOpencodeConfig): Record<string, unknown> {
 	const merged: Record<string, unknown> = { ...managed };
-	for (const key of ['mcp', 'skills', 'command', 'agent', 'instructions'] as const) {
+	for (const key of ['mcp', 'skills', 'command', 'instructions'] as const) {
 		if (user[key] !== undefined) {
 			merged[key] = user[key];
 		}
+	}
+	if (user.agent !== undefined) {
+		// Merge per agent name instead of replacing the whole map: a user config that only customizes
+		// their own agents must not silently drop managed entries such as plan mode's edit: deny override.
+		const managedAgents = (managed.agent as Record<string, unknown> | undefined) ?? {};
+		const userAgents = user.agent as Record<string, unknown>;
+		merged.agent = {
+			...managedAgents,
+			...Object.fromEntries(Object.entries(userAgents).map(([name, agent]) => [
+				name,
+				{ ...(managedAgents[name] as Record<string, unknown> | undefined), ...(agent as Record<string, unknown>) },
+			])),
+		};
 	}
 	if (user.pluginsAllowed && user.plugin !== undefined) {
 		merged.plugin = user.plugin;
