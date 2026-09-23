@@ -25,43 +25,49 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 		const all = parts();
 		return all[all.length - 1];
 	});
+	const copyText = createMemo(() => parts().filter(part => part.type === 'text' && !part.synthetic).map(part => part.text ?? '').join('\n\n').trim());
 
 	return (
 		<Show when={parts().length > 0 || !!error()}>
 			<div class={`lens-row lens-row-${role()}${props.rewound ? ' lens-rewound' : ''}`}>
 				<Show when={role() === 'user'} fallback={
-					<For each={groups()}>
-						{group => (
-							<Switch>
-								<Match when={group.kind === 'tools' ? group.parts : undefined}>
-									{toolParts => (
-										<div class="lens-tool-group">
-											<For each={toolParts()}>
-												{part => (
-													<AssistantPart
-														part={part}
-														questions={props.questions ?? []}
-														reads={reads()}
-														streaming={!!props.busy && !!props.isLast && part === lastPart()}
-													/>
-												)}
-											</For>
-										</div>
-									)}
-								</Match>
-								<Match when={group.kind === 'part' ? group.part : undefined}>
-									{part => (
-										<AssistantPart
-											part={part()}
-											questions={props.questions ?? []}
-											reads={reads()}
-											streaming={!!props.busy && !!props.isLast && part() === lastPart()}
-										/>
-									)}
-								</Match>
-							</Switch>
-						)}
-					</For>
+					<>
+						<For each={groups()}>
+							{group => (
+								<Switch>
+									<Match when={group.kind === 'tools' ? group.parts : undefined}>
+										{toolParts => (
+											<div class="lens-tool-group">
+												<For each={toolParts()}>
+													{part => (
+														<AssistantPart
+															part={part}
+															questions={props.questions ?? []}
+															reads={reads()}
+															streaming={!!props.busy && !!props.isLast && part === lastPart()}
+														/>
+													)}
+												</For>
+											</div>
+										)}
+									</Match>
+									<Match when={group.kind === 'part' ? group.part : undefined}>
+										{part => (
+											<AssistantPart
+												part={part()}
+												questions={props.questions ?? []}
+												reads={reads()}
+												streaming={!!props.busy && !!props.isLast && part() === lastPart()}
+											/>
+										)}
+									</Match>
+								</Switch>
+							)}
+						</For>
+						<Show when={copyText() && !(!!props.busy && !!props.isLast)}>
+							<CopyResponseButton text={copyText()} />
+						</Show>
+					</>
 				}>
 					{/* The engine records a compaction as a user message holding only a compaction part. */}
 					<Show when={parts().some(part => part.type === 'compaction')} fallback={<UserBubble parts={parts()} />}>
@@ -463,6 +469,43 @@ function ToolCard(props: { part: ChatPart }) {
 				</Show>
 			</div>
 		</div>
+	);
+}
+
+function CopyResponseButton(props: { text: string }) {
+	const [copied, setCopied] = createSignal(false);
+	return (
+		<button
+			type="button"
+			class="lens-row-copy"
+			title={copied() ? 'Copied' : 'Copy response'}
+			onClick={() => {
+				void navigator.clipboard.writeText(props.text).then(() => {
+					setCopied(true);
+					window.setTimeout(() => setCopied(false), 1200);
+				});
+			}}
+		>
+			<Show when={copied()} fallback={<IconCopy />}>
+				<IconCheck />
+			</Show>
+		</button>
+	);
+}
+
+function IconCopy() {
+	return (
+		<svg class="lens-row-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<rect x="9" y="9" width="13" height="13" rx="2" />
+			<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+		</svg>
+	);
+}
+function IconCheck() {
+	return (
+		<svg class="lens-row-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<polyline points="20 6 9 17 4 12" />
+		</svg>
 	);
 }
 

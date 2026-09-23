@@ -50,6 +50,8 @@ export type WebviewToHost =
 	| { type: 'session.summarize'; sessionID: string; model: SessionPromptModel; auto?: boolean }
 	/** Lens Chat's own settings (for example `lens.chat.autoCompactThreshold`); also pushed as a result when they change. */
 	| { type: 'chat.settings' }
+	/** `/export`: the webview already rendered the transcript to Markdown; the host saves it to a file. */
+	| { type: 'chat.export'; markdown: string; title: string }
 	| { type: 'find.files'; query: string }
 	| { type: 'find.symbols'; query: string }
 	| { type: 'session.diff'; sessionID: string }

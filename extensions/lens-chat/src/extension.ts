@@ -178,6 +178,10 @@ class LensChatHost {
 			this.post(webview, { type: 'result', requestType: message.type, data: chatSettings() });
 			return;
 		}
+		if (message.type === 'chat.export') {
+			await this.exportChat(message.markdown, message.title);
+			return;
+		}
 		if (message.type === 'file.open') {
 			await this.openFileChange(message.path, message.addedLines ?? [], !!message.isNew);
 			return;
@@ -433,6 +437,23 @@ class LensChatHost {
 			}
 		}
 		await commands.executeCommand('_lens.engine.patchUserConfig', { mcp: { [name]: config } });
+	}
+
+	private async exportChat(markdown: string, title: string): Promise<void> {
+		const folder = workspace.workspaceFolders?.[0]?.uri;
+		if (!folder) {
+			window.showErrorMessage('Open a folder to export this chat to.');
+			return;
+		}
+		const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'lens-chat';
+		const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const target = Uri.joinPath(folder, '.lens', 'exports', `${slug}-${stamp}.md`);
+		try {
+			await workspace.fs.writeFile(target, Buffer.from(markdown, 'utf8'));
+			await window.showTextDocument(await workspace.openTextDocument(target), { preview: false });
+		} catch (error) {
+			window.showErrorMessage(`Could not export the chat: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 
 	private async confirm(message: string, action: string): Promise<boolean> {

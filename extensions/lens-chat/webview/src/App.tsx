@@ -31,6 +31,7 @@ import {
 import { applyChatEvent, eventSessionID } from './chat/streamEvents';
 import { ContextMeter } from './chat/ContextMeter';
 import { autoCompactDecision, COMPACT_COMMAND, COMPACT_DESCRIPTION, contextUsage, normalizeThreshold } from './chat/contextMeter';
+import { EXPORT_COMMAND, EXPORT_DESCRIPTION, transcriptToMarkdown } from './chat/exportChat';
 import { FollowUpQueue } from './chat/FollowUpQueue';
 import {
 	createTurnBoundaryWatcher,
@@ -140,7 +141,10 @@ function ChatApp() {
 	let turnSeq = 0;
 	let statusSeq = -1;
 	// `/compact` is Lens's own: it runs through the engine's summarize route, not as a prompt or engine command.
-	const slashCatalog: SlashItem[] = [{ kind: 'command', name: COMPACT_COMMAND, description: COMPACT_DESCRIPTION }];
+	const slashCatalog: SlashItem[] = [
+		{ kind: 'command', name: COMPACT_COMMAND, description: COMPACT_DESCRIPTION },
+		{ kind: 'command', name: EXPORT_COMMAND, description: EXPORT_DESCRIPTION },
+	];
 	// Messages sent while a turn runs, per session; each goes out when its session's run ends.
 	const [followUps, setFollowUps] = createSignal<FollowUpState>(restoreFollowUps(readSavedState().followUps));
 	const activeFollowUps = createMemo(() => queuedFor(followUps(), active()));
@@ -658,6 +662,18 @@ function ChatApp() {
 		vscode.postMessage({ type: 'session.summarize', sessionID, model: ref, auto });
 	}
 
+	/** `/export`: the transcript is already loaded client-side, so it renders to Markdown here and hands it to the host to save. */
+	function exportSession() {
+		const sessionID = active();
+		if (!sessionID || !messages().length) {
+			setError('There is nothing to export yet.');
+			return;
+		}
+		const title = tabs().find(tab => tab.id === sessionID)?.title;
+		const markdown = transcriptToMarkdown(title ? formatSessionTitle(title) : 'Lens Chat', messages());
+		vscode.postMessage({ type: 'chat.export', markdown, title: title ? formatSessionTitle(title) : 'lens-chat' });
+	}
+
 	// Auto-compaction: once a turn this view watched has settled, compact if the context is over the
 	// threshold. The engine still compacts on its own mid-turn when the window is completely full.
 	const watchedTurns = new Set<string>();
@@ -715,6 +731,12 @@ function ChatApp() {
 			setDraft('');
 			setSlashOpen(false);
 			compactSession();
+			return;
+		}
+		if (text === `/${EXPORT_COMMAND}` && !attachments().length) {
+			setDraft('');
+			setSlashOpen(false);
+			exportSession();
 			return;
 		}
 		// The engine still strips unsupported images and tells the model, but the user should learn that too.
@@ -789,6 +811,13 @@ function ChatApp() {
 			setSlashOpen(false);
 			closePicker();
 			compactSession();
+			return;
+		}
+		if (item.kind === 'command' && item.name === EXPORT_COMMAND) {
+			setDraft('');
+			setSlashOpen(false);
+			closePicker();
+			exportSession();
 			return;
 		}
 		const rest = draft().replace(/(^|\s)\/([^\s]*)$/, ' ').trim();
