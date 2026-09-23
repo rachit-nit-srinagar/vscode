@@ -37,6 +37,7 @@ type Tab = { id: string; title: string };
 type SlashItem = { kind: 'command' | 'skill'; name: string; description?: string };
 type Attachment = { type: 'file'; mime: string; url: string; filename?: string };
 type PendingPrompt = { text: string; parts: Array<{ type: 'text'; text: string } | Attachment> };
+type PendingCommand = { command: string; arguments: string };
 type PermissionRequest = { id: string; sessionID?: string; permission?: string; patterns?: string[] };
 type AgentInfo = { name?: string; mode?: string; hidden?: boolean };
 type HistoryItem = { id: string; title?: string; time?: { updated?: number; archived?: number } };
@@ -93,6 +94,7 @@ function ChatApp() {
 	const [questions, setQuestions] = createSignal<QuestionRequest[]>([]);
 	let fileInput: HTMLInputElement | undefined;
 	let pendingPrompt: PendingPrompt | undefined;
+	let pendingCommand: PendingCommand | undefined;
 	const slashCatalog: SlashItem[] = [];
 
 	const visibleAgents = createMemo(() => {
@@ -211,6 +213,7 @@ function ChatApp() {
 			const session = data as { id?: string; title?: string };
 			if (!session?.id) {
 				pendingPrompt = undefined;
+				pendingCommand = undefined;
 				setBusy(false);
 				setError('Could not start a chat session.');
 				return;
@@ -220,10 +223,15 @@ function ChatApp() {
 			setActive(session.id);
 			setMessages([]);
 			setReviewDiffs([]);
-			const queued = pendingPrompt;
+			const queuedPrompt = pendingPrompt;
 			pendingPrompt = undefined;
-			if (queued) {
-				promptSession(session.id!, queued.text, queued.parts);
+			if (queuedPrompt) {
+				promptSession(session.id!, queuedPrompt.text, queuedPrompt.parts);
+			}
+			const queuedCommand = pendingCommand;
+			pendingCommand = undefined;
+			if (queuedCommand) {
+				runCommand(session.id!, queuedCommand.command, queuedCommand.arguments);
 			}
 		} else if (requestType === 'session.list') {
 			setHistory(Array.isArray(data) ? data as HistoryItem[] : []);
@@ -453,27 +461,34 @@ function ChatApp() {
 		}
 	}
 
-	function applySlash(item: SlashItem) {
-		const sessionID = active();
-		if (!sessionID) {
-			setError('Start a chat before running a skill or command.');
-			setSlashOpen(false);
-			return;
-		}
-		const rest = draft().replace(/(^|\s)\/([^\s]*)$/, ' ').trim();
+	function runCommand(sessionID: string, command: string, args: string) {
 		setBusy(true);
 		vscode.postMessage({
 			type: 'session.command',
 			sessionID,
-			command: item.name,
-			arguments: rest,
+			command,
+			arguments: args,
 			agent: agent(),
 			variant: effort(),
 		});
+		setMessages(current => [...current, { info: { role: 'user' }, parts: [{ type: 'text', text: `/${command} ${args}`.trim() }] }]);
+	}
+
+	function applySlash(item: SlashItem) {
+		const rest = draft().replace(/(^|\s)\/([^\s]*)$/, ' ').trim();
 		setDraft('');
 		setSlashOpen(false);
 		closePicker();
-		setMessages(current => [...current, { info: { role: 'user' }, parts: [{ type: 'text', text: `/${item.name} ${rest}`.trim() }] }]);
+		const sessionID = active();
+		if (!sessionID) {
+			// A new, unsaved chat has no session yet: queue the command and create one first,
+			// the same way send() queues a plain message.
+			pendingCommand = { command: item.name, arguments: rest };
+			setBusy(true);
+			createSession();
+			return;
+		}
+		runCommand(sessionID, item.name, rest);
 	}
 
 	function dictate() {
