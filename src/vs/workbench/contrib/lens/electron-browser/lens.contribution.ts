@@ -27,9 +27,9 @@ async function readProvidersState(lensProvidersService: ILensProvidersService, l
 class OpenAiProvidersAction extends Action2 {
 	constructor() {
 		super({
-			id: 'lens.providers.open',
+			id: 'lens.openAiProviders',
 			category: LENS_CATEGORY,
-			title: localize2('lens.providers.open', "Open AI Providers"),
+			title: localize2('lens.openAiProviders', "Open AI Providers"),
 			f1: true,
 		});
 	}

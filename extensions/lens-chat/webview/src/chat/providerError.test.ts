@@ -28,4 +28,10 @@ describe('parseProviderError', () => {
 		});
 		expect(parseProviderError('{"error":{"message":"x","details":[{"links":[{"url":"javascript:alert(1)"}]}]}}').links).toEqual([]);
 	});
+	it('does not label unrelated "not found" errors as a missing model', () => {
+		const parsed = parseProviderError("command 'lens.providers.focus' not found");
+		expect(parsed.heading).toBe('Something went wrong');
+		expect(parsed.message).toBe("command 'lens.providers.focus' not found");
+		expect(parseProviderError('The model gemini-9 does not exist').heading).toBe('Model not available');
+	});
 });

@@ -1,7 +1,8 @@
-import type { IncomingMessage, Server, ServerResponse } from 'http';
+import { createServer, IncomingMessage, request as httpRequest, Server, ServerResponse } from 'http';
 import { AddressInfo } from 'net';
 import { randomBytes, timingSafeEqual } from 'crypto';
-import { Readable } from 'stream';
+import { request as httpsRequest } from 'https';
+import { pipeline } from 'stream';
 import { ILensLlmBackend } from '../common/lensLlmBackend.js';
 import { ThoughtSignatureStore } from './thoughtSignatures.js';
 
@@ -30,7 +31,6 @@ export class LensOpenAiFacade {
 	constructor(private readonly backend: ILensLlmBackend, private readonly log: (message: string) => void) { }
 
 	async start(): Promise<ILensFacadeAddress> {
-		const { createServer } = await import('http');
 		const server = createServer((req, res) => void this.handle(req, res).catch(error => this.fail(res, 502, String(error))));
 		this.server = server;
 		await new Promise<void>((resolve, reject) => {
@@ -79,46 +79,46 @@ export class LensOpenAiFacade {
 		if (upstream.thoughtSignatures) {
 			this.thoughtSignatures.apply(payload);
 		}
-		const body = new TextEncoder().encode(JSON.stringify({ ...payload, model: upstream.model }));
-		const abort = new AbortController();
-		res.on('close', () => abort.abort());
+		const body = Buffer.from(JSON.stringify({ ...payload, model: upstream.model }));
+		const headers = { ...upstream.headers, 'content-type': 'application/json', 'content-length': String(body.length), accept: req.headers.accept ?? '*/*' };
 
-		let response: Response | undefined;
-		for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+		let response: IncomingMessage | undefined;
+		for (let attempt = 1; attempt <= MAX_ATTEMPTS && !res.destroyed; attempt++) {
 			try {
-				response = await fetch(upstream.url, {
-					method: 'POST',
-					headers: { ...upstream.headers, 'content-type': 'application/json', accept: req.headers.accept ?? '*/*' },
-					body,
-					signal: abort.signal,
-				});
+				response = await post(upstream.url, headers, body, res);
+				break;
 			} catch (error) {
-				if (abort.signal.aborted || attempt === MAX_ATTEMPTS) {
+				if (res.destroyed || attempt === MAX_ATTEMPTS) {
 					throw error;
 				}
 				this.log(`[LensFacade] upstream error, retrying (${attempt}): ${error}`);
 				await delay(attempt * 500);
-				continue;
 			}
-			break;
 		}
 		if (!response) {
-			return this.fail(res, 502, 'no upstream response');
-		}
-		if (!response.ok) {
-			this.log(`[LensFacade] ${upstream.model}: upstream HTTP ${response.status}`);
-		}
-
-		res.writeHead(response.status, {
-			'content-type': response.headers.get('content-type') ?? 'application/json',
-			'cache-control': 'no-cache',
-		});
-		if (!response.body) {
-			res.end();
 			return;
 		}
-		const stream = upstream.thoughtSignatures ? response.body.pipeThrough(this.thoughtSignatures.observe()) : response.body;
-		Readable.fromWeb(stream as import('stream/web').ReadableStream).pipe(res);
+		const status = response.statusCode ?? 502;
+		if (status >= 400) {
+			this.log(`[LensFacade] ${upstream.model}: upstream HTTP ${status}`);
+		}
+
+		res.writeHead(status, {
+			'content-type': response.headers['content-type'] ?? 'application/json',
+			'cache-control': 'no-cache',
+		});
+		// Node streams on purpose: web streams (fetch bodies) in Electron's main process can
+		// leave the end of a response unflushed until unrelated I/O wakes the event loop.
+		const done = (error: Error | null) => {
+			if (error) {
+				this.log(`[LensFacade] ${upstream.model}: stream ended early: ${error.message}`);
+			}
+		};
+		if (upstream.thoughtSignatures) {
+			pipeline(response, this.thoughtSignatures.observe(), res, done);
+		} else {
+			pipeline(response, res, done);
+		}
 	}
 
 	private authorized(header: string | undefined): boolean {
@@ -152,6 +152,19 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
 		});
 		req.on('end', () => resolve(Buffer.concat(chunks)));
 		req.on('error', reject);
+	});
+}
+
+/** Sends the request and resolves once the upstream status line and headers arrive. Closing `client` aborts it. */
+function post(url: string, headers: Record<string, string>, body: Buffer, client: ServerResponse): Promise<IncomingMessage> {
+	return new Promise((resolve, reject) => {
+		const target = new URL(url);
+		const request = (target.protocol === 'https:' ? httpsRequest : httpRequest)(target, { method: 'POST', headers }, resolve);
+		const abort = () => request.destroy(new Error('client closed the request'));
+		client.once('close', abort);
+		request.once('close', () => client.off('close', abort));
+		request.once('error', reject);
+		request.end(body);
 	});
 }
 

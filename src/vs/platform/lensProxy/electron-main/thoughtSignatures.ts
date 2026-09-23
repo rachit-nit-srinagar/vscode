@@ -1,3 +1,5 @@
+import { Transform } from 'stream';
+
 /**
  * Gemini 3 attaches a `thought_signature` to each tool call (OpenAI-compatible API:
  * `tool_calls[].extra_content.google.thought_signature`) and rejects the next request unless
@@ -41,7 +43,7 @@ export class ThoughtSignatureStore {
 	}
 
 	/** Passes a response body through unchanged while recording the signatures it carries. */
-	observe(): TransformStream<Uint8Array, Uint8Array> {
+	observe(): Transform {
 		const decoder = new TextDecoder();
 		const idByIndex = new Map<number, string>();
 		let buffer = '';
@@ -56,17 +58,18 @@ export class ThoughtSignatureStore {
 				// Not a complete JSON line; non-streaming bodies are handled at flush.
 			}
 		};
-		return new TransformStream({
-			transform: (chunk, controller) => {
-				controller.enqueue(chunk);
+		return new Transform({
+			transform: (chunk: Buffer, _encoding, callback) => {
 				buffer += decoder.decode(chunk, { stream: true });
 				const lines = buffer.split('\n');
 				buffer = lines.pop() ?? '';
 				lines.forEach(readLine);
+				callback(null, chunk);
 			},
-			flush: () => {
+			flush: callback => {
 				buffer += decoder.decode();
 				readLine(buffer.replace(/\s+/g, ' '));
+				callback();
 			},
 		});
 	}

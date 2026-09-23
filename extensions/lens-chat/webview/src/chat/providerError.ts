@@ -23,7 +23,7 @@ export function parseProviderError(text: string): ProviderError {
 	const prefix = (start > 0 ? raw.slice(0, start) : start === 0 ? '' : raw).trim().replace(/[:\s]+$/, '');
 	const body = start >= 0 ? parseJsonBody(raw.slice(start)) : undefined;
 	if (!body) {
-		return { heading: headingFor(undefined, undefined, raw), message: raw, links: [], retryIn: retryFromText(raw) };
+		return { heading: headingFor(undefined, undefined, raw, 'Something went wrong'), message: raw, links: [], retryIn: retryFromText(raw) };
 	}
 	const error = body.error ?? body;
 	const code = error.code !== undefined ? String(error.code) : undefined;
@@ -59,7 +59,7 @@ function parseJsonBody(text: string): ErrorBody | undefined {
 	return undefined;
 }
 
-function headingFor(code: string | undefined, status: string | undefined, text: string): string {
+function headingFor(code: string | undefined, status: string | undefined, text: string, fallback = 'The model returned an error'): string {
 	const signal = `${code ?? ''} ${status ?? ''} ${text}`.toLowerCase();
 	if (/\b429\b|resource_exhausted|rate.?limit|quota|too many requests/.test(signal)) {
 		return 'Rate limit or quota reached';
@@ -67,7 +67,8 @@ function headingFor(code: string | undefined, status: string | undefined, text: 
 	if (/\b40[13]\b|unauthorized|permission_denied|invalid.{0,10}(api.)?key|authentication/.test(signal)) {
 		return 'The provider rejected the API key';
 	}
-	if (/\b404\b|not.found|no longer available|does not exist/.test(signal)) {
+	// A bare "not found" is too broad (e.g. an unknown command); require a status code or a model reference.
+	if (/\b404\b|not_found|model\b.{0,80}\b(not found|no longer available|does not exist)/.test(signal)) {
 		return 'Model not available';
 	}
 	if (/\b50[234]\b|unavailable|overloaded|service unavailable|bad gateway|timeout/.test(signal)) {
@@ -76,7 +77,7 @@ function headingFor(code: string | undefined, status: string | undefined, text: 
 	if (/\b400\b|invalid_argument|bad request|must be/.test(signal)) {
 		return 'The provider rejected the request';
 	}
-	return 'The model returned an error';
+	return fallback;
 }
 
 function retryFromText(text: string): string | undefined {
