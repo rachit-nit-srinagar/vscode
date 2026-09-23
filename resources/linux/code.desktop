@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=@@NAME_LONG@@
-Comment=Code Editing. Redefined.
+Comment=AI coding IDE with a built-in agent
 GenericName=Text Editor
 Exec=@@EXEC@@ %F
 Icon=@@ICON@@
