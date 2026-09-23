@@ -115,4 +115,7 @@ registerSingleton(
 	InstantiationType.Delayed,
 );
 
-registerWorkbenchContribution2(AgentHostPrewarmContribution.ID, AgentHostPrewarmContribution, WorkbenchPhase.BlockRestore);
+// Lens disables the GitHub Copilot agent host unless LENS_ENABLE_GITHUB_COPILOT=1.
+if (typeof process !== 'undefined' && process.env['LENS_ENABLE_GITHUB_COPILOT'] === '1') {
+	registerWorkbenchContribution2(AgentHostPrewarmContribution.ID, AgentHostPrewarmContribution, WorkbenchPhase.BlockRestore);
+}

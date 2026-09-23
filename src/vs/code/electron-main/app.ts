@@ -765,9 +765,14 @@ export class CodeApplication extends Disposable {
 		// request. The renderer only requests a connection when the runtime is
 		// available and AI features are enabled there, which the main process
 		// cannot fully observe.
-		const agentHostStarter = appInstantiationService.createInstance(ElectronAgentHostStarter, { machineId, sqmId, devDeviceId });
-		// This manager self-disposes after its lifecycle join; CodeApplication disposes before later shutdown listeners run.
-		appInstantiationService.createInstance(AgentHostProcessManager, agentHostStarter, process.platform);
+		// Lens replaces the GitHub Copilot agent host with its own engine; LENS_ENABLE_GITHUB_COPILOT=1 brings it back.
+		if (process.env['LENS_ENABLE_GITHUB_COPILOT'] === '1') {
+			const agentHostStarter = appInstantiationService.createInstance(ElectronAgentHostStarter, { machineId, sqmId, devDeviceId });
+			// This manager self-disposes after its lifecycle join; CodeApplication disposes before later shutdown listeners run.
+			appInstantiationService.createInstance(AgentHostProcessManager, agentHostStarter, process.platform);
+		} else {
+			this.logService.info('[Lens] GitHub Copilot agent host is disabled');
+		}
 
 		// Metered connection telemetry
 		appInstantiationService.invokeFunction(accessor => {
