@@ -1,10 +1,11 @@
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess, execFile, spawn } from 'child_process';
 import { randomBytes } from 'crypto';
 import { existsSync, promises as fs } from 'fs';
 import { createServer } from 'net';
 import { homedir } from 'os';
 import { Disposable } from '../../../base/common/lifecycle.js';
 import { join } from '../../../base/common/path.js';
+import { rgDiskPath } from '../../../base/node/ripgrep.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
 import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
 import { ILogService } from '../../log/common/log.js';
@@ -60,6 +61,9 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 	private defaultModel: string | undefined;
 	private readonly userConfigFile: string;
 	private readonly egressFile: string;
+	/** The engine's own config/data/state/cache, apart from any personal opencode install. */
+	private readonly runtimeRoot: string;
+	private readonly pidFile: string;
 
 	constructor(
 		@ILogService private readonly logService: ILogService,
@@ -70,6 +74,8 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		super();
 		this.userConfigFile = join(environmentMainService.userDataPath, 'lens-opencode-user.json');
 		this.egressFile = join(environmentMainService.userDataPath, 'lens-egress-extra.txt');
+		this.runtimeRoot = join(environmentMainService.userDataPath, 'lens-engine');
+		this.pidFile = join(this.runtimeRoot, 'engine.pid');
 	}
 
 	start(): Promise<ILensEngineInfo | undefined> {
@@ -151,15 +157,18 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		const password = randomBytes(24).toString('hex');
 		const info: ILensEngineInfo = { opencodeUrl: `http://127.0.0.1:${port}`, username: ENGINE_USERNAME, password };
 		const userConfig = await this.getUserConfig();
+		await this.stopStaleEngine();
+		await Promise.all(['config', 'data', 'state', 'cache'].map(dir => fs.mkdir(join(this.runtimeRoot, dir), { recursive: true, mode: 0o700 })));
+		const ripgrep = await rgDiskPath().then(path => existsSync(path) ? path : undefined, () => undefined);
 		this.defaultModel = `lens/${chooseDefaultModel(models).id}`;
-		this.spawnEngine(opencodeRoot, port, password, facade, models, userConfig);
+		this.spawnEngine(opencodeRoot, port, password, facade, models, userConfig, ripgrep);
 		await waitForReady(info);
 		this.info = info;
 		this.logService.info(`[LensEngine] ready at ${info.opencodeUrl}`);
 		return info;
 	}
 
-	private spawnEngine(opencodeRoot: string, port: number, password: string, facade: ILensFacadeAddress, models: ILensUpstreamModel[], userConfig: ILensUserOpencodeConfig): void {
+	private spawnEngine(opencodeRoot: string, port: number, password: string, facade: ILensFacadeAddress, models: ILensUpstreamModel[], userConfig: ILensUserOpencodeConfig, ripgrep: string | undefined): void {
 		const env: NodeJS.ProcessEnv = { ...process.env };
 		for (const key of SECRET_ENV) {
 			delete env[key];
@@ -180,14 +189,27 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 			OPENCODE_LENS_ALLOW_USER_PLUGINS: userConfig.pluginsAllowed ? '1' : '',
 			OPENCODE_LENS_ALLOW_LOCAL_MCP: hasLocalMcp(userConfig) ? '1' : '',
 			OPENCODE_CONFIG_CONTENT: JSON.stringify(mergeUserConfig(engineConfig(facade, models), userConfig)),
+			// Keep the engine's config and data inside the Lens profile: a personal ~/.config/opencode
+			// config must not loosen Lens's permissions, and Lens must not touch personal sessions.
+			XDG_CONFIG_HOME: join(this.runtimeRoot, 'config'),
+			XDG_DATA_HOME: join(this.runtimeRoot, 'data'),
+			XDG_STATE_HOME: join(this.runtimeRoot, 'state'),
+			XDG_CACHE_HOME: join(this.runtimeRoot, 'cache'),
 		});
+		if (ripgrep) {
+			// Lens blocks the engine's ripgrep download; use the binary VS Code ships.
+			env.OPENCODE_RIPGREP_PATH = ripgrep;
+		}
 
-		const child = spawn(bunPath(), ['run', 'src/index.ts', 'serve', '--hostname', '127.0.0.1', '--port', String(port)], {
+		const child = spawn(bunPath(this.environmentMainService.appRoot), ['run', 'src/index.ts', 'serve', '--hostname', '127.0.0.1', '--port', String(port)], {
 			cwd: join(opencodeRoot, 'packages', 'opencode'),
 			env,
 			stdio: ['ignore', 'pipe', 'pipe'],
 		});
 		this.child = child;
+		if (child.pid) {
+			fs.writeFile(this.pidFile, `${child.pid}\n${port}\n`, { mode: 0o600 }).catch(() => undefined);
+		}
 		child.stdout?.on('data', data => this.logService.trace(`[LensEngine] ${String(data).trimEnd()}`));
 		child.stderr?.on('data', data => this.logService.info(`[LensEngine] ${String(data).trimEnd()}`));
 		child.on('exit', code => {
@@ -207,7 +229,7 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 			this.restarts++;
 			setTimeout(() => {
 				if (!this.disposed) {
-					this.spawnEngine(opencodeRoot, port, password, facade, models, userConfig);
+					this.spawnEngine(opencodeRoot, port, password, facade, models, userConfig, ripgrep);
 				}
 			}, this.restarts * 1000);
 		});
@@ -218,10 +240,32 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 		this.teardown();
 	}
 
+	/** Stops an engine left running by a Lens that crashed, but only if the recorded pid is still that engine. */
+	private async stopStaleEngine(): Promise<void> {
+		const [pidText, portText] = (await fs.readFile(this.pidFile, 'utf8').catch(() => '')).split('\n');
+		const pid = Number(pidText);
+		if (!Number.isInteger(pid) || pid <= 0) {
+			return;
+		}
+		const command = await processCommandLine(pid);
+		if (command?.includes('src/index.ts') && command.includes('serve') && command.includes(`--port ${portText}`)) {
+			this.logService.info(`[LensEngine] stopping stale engine ${pid}`);
+			try {
+				process.kill(pid, 'SIGTERM');
+			} catch {
+				// Already gone.
+			}
+		}
+		await fs.rm(this.pidFile, { force: true });
+	}
+
 	private teardown(): void {
 		const child = this.child;
 		this.child = undefined;
 		child?.kill();
+		if (child) {
+			fs.rm(this.pidFile, { force: true }).catch(() => undefined);
+		}
 		this.facade?.dispose();
 		this.info = undefined;
 	}
@@ -270,13 +314,14 @@ function engineConfig(facade: ILensFacadeAddress, models: ILensUpstreamModel[]) 
 	};
 }
 
-function bunPath(): string {
+function bunPath(appRoot: string): string {
 	if (process.env.LENS_BUN_PATH) {
 		return process.env.LENS_BUN_PATH;
 	}
-	// GUI launches often lack ~/.bun/bin on PATH.
-	const local = join(homedir(), '.bun', 'bin', process.platform === 'win32' ? 'bun.exe' : 'bun');
-	return existsSync(local) ? local : 'bun';
+	const exe = process.platform === 'win32' ? 'bun.exe' : 'bun';
+	// Packaged builds ship bun next to the app (scripts/package-lens.sh); GUI launches often lack ~/.bun/bin on PATH.
+	const candidate = [join(appRoot, '..', 'bun', exe), join(homedir(), '.bun', 'bin', exe)].find(path => existsSync(path));
+	return candidate ?? 'bun';
 }
 
 function freePort(): Promise<number> {
@@ -382,4 +427,15 @@ function compareVersions(a: number[], b: number[]): number {
 		}
 	}
 	return 0;
+}
+
+/** Command line of a running process, or undefined if it is gone or cannot be inspected. */
+async function processCommandLine(pid: number): Promise<string | undefined> {
+	if (process.platform === 'linux') {
+		return fs.readFile(`/proc/${pid}/cmdline`, 'utf8').then(text => text.split('\0').join(' '), () => undefined);
+	}
+	if (process.platform === 'darwin') {
+		return new Promise(resolve => execFile('ps', ['-o', 'command=', '-p', String(pid)], (error, stdout) => resolve(error ? undefined : stdout.trim())));
+	}
+	return undefined;
 }
