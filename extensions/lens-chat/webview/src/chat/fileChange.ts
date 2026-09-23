@@ -81,9 +81,13 @@ export function fileChangesFromPart(part: ChatPart): FileChange[] {
 	const input = asRecord(part.state?.input);
 	const meta = asRecord(part.state?.metadata);
 	const tool = part.tool || '';
+	// A rejected or failed call never touched the file: don't synthesize a diff from what the model
+	// asked for, or a card would show "+N" lines that were never written. Show why instead.
+	const failed = part.state?.status === 'error';
+	const errorLabel = failed ? rejectionLabel(part.state?.error) : undefined;
 	const files = Array.isArray(meta.files) ? meta.files : [];
 	if (files.length) {
-		return files.map(file => fromApplyPatchFile(file, tool)).filter((change): change is FileChange => !!change);
+		return files.map(file => fromApplyPatchFile(file, tool, errorLabel)).filter((change): change is FileChange => !!change);
 	}
 
 	const path = firstString(
@@ -97,35 +101,35 @@ export function fileChangesFromPart(part: ChatPart): FileChange[] {
 	if (tool === 'write') {
 		const content = str(input.content);
 		const exists = meta.exists === true;
-		const diff = firstString(meta.diff, asRecord(meta.filediff)?.patch) || synthesizeAdditionDiff(content);
+		const diff = failed ? '' : firstString(meta.diff, asRecord(meta.filediff)?.patch) || synthesizeAdditionDiff(content);
 		return [toFileChange({
 			path,
 			tool,
 			diff,
-			additions: num(asRecord(meta.filediff)?.additions),
-			deletions: num(asRecord(meta.filediff)?.deletions),
+			additions: failed ? 0 : num(asRecord(meta.filediff)?.additions),
+			deletions: failed ? 0 : num(asRecord(meta.filediff)?.deletions),
 			isNew: !exists,
-			fallbackLabel: exists ? 'Edited file' : 'Wrote file',
+			fallbackLabel: errorLabel ?? (exists ? 'Edited file' : 'Wrote file'),
 		})];
 	}
 
 	if (tool === 'edit') {
-		const patch = firstString(meta.diff, asRecord(meta.filediff)?.patch)
+		const patch = failed ? '' : firstString(meta.diff, asRecord(meta.filediff)?.patch)
 			|| synthesizeEditDiff(str(input.oldString), str(input.newString));
 		return [toFileChange({
 			path: path || pathFromPatch(patch),
 			tool,
 			diff: patch,
-			additions: num(asRecord(meta.filediff)?.additions),
-			deletions: num(asRecord(meta.filediff)?.deletions),
+			additions: failed ? 0 : num(asRecord(meta.filediff)?.additions),
+			deletions: failed ? 0 : num(asRecord(meta.filediff)?.deletions),
 			isNew: false,
-			fallbackLabel: 'Edited file',
+			fallbackLabel: errorLabel ?? 'Edited file',
 		})];
 	}
 
-	const patch = firstString(meta.diff, input.patchText, input.patch);
+	const patch = failed ? '' : firstString(meta.diff, input.patchText, input.patch);
 	const fromPatch = path || pathFromPatch(patch);
-	if (!fromPatch && !patch) {
+	if (!fromPatch && !patch && !errorLabel) {
 		return [];
 	}
 	return [toFileChange({
@@ -133,7 +137,7 @@ export function fileChangesFromPart(part: ChatPart): FileChange[] {
 		tool,
 		diff: patch,
 		isNew: false,
-		fallbackLabel: 'Edited file',
+		fallbackLabel: errorLabel ?? 'Edited file',
 	})];
 }
 
@@ -158,7 +162,7 @@ export function fileBasename(filePath: string): string {
 	return parts.at(-1) || filePath;
 }
 
-function fromApplyPatchFile(raw: unknown, tool: string): FileChange | undefined {
+function fromApplyPatchFile(raw: unknown, tool: string, errorLabel: string | undefined): FileChange | undefined {
 	const file = asRecord(raw);
 	if (!file) {
 		return undefined;
@@ -168,17 +172,25 @@ function fromApplyPatchFile(raw: unknown, tool: string): FileChange | undefined 
 		return undefined;
 	}
 	const kind = str(file.type);
-	const patch = firstString(file.patch, file.diff);
+	const patch = errorLabel ? '' : firstString(file.patch, file.diff);
 		return toFileChange({
 			path,
 			tool,
 			diff: patch,
-			additions: num(file.additions),
-			deletions: num(file.deletions),
+			additions: errorLabel ? 0 : num(file.additions),
+			deletions: errorLabel ? 0 : num(file.deletions),
 			isNew: kind === 'add',
 			deleted: kind === 'delete',
-			fallbackLabel: kind === 'add' ? 'Wrote file' : kind === 'delete' ? 'Deleted file' : 'Edited file',
+			fallbackLabel: errorLabel ?? (kind === 'add' ? 'Wrote file' : kind === 'delete' ? 'Deleted file' : 'Edited file'),
 		});
+}
+
+/** A short, readable label for a failed or rejected tool call. */
+function rejectionLabel(error: string | undefined): string {
+	if (error && /reject|denied|declin/i.test(error)) {
+		return 'Rejected';
+	}
+	return error ? `Error: ${error}` : 'Error';
 }
 
 function toFileChange(args: {
