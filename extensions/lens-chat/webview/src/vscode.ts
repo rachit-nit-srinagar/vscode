@@ -26,7 +26,8 @@ export const vscode: VsCodeApi = {
 	},
 };
 
-type SavedState = { model?: string; effort?: string; openTabs?: string[]; activeTab?: string };
+// followUps is validated when read back (chat/followUps.ts restoreFollowUps).
+type SavedState = { model?: string; effort?: string; openTabs?: string[]; activeTab?: string; followUps?: unknown };
 
 /** Webview state survives reloads of the panel and the window. */
 export function readSavedState(): SavedState {

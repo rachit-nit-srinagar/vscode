@@ -39,8 +39,37 @@
     "title": "%command.history%",
     "icon": "$(history)",
     "category": "Chat"
+   },
+   {
+    "command": "lens.chat.insertMention",
+    "title": "%command.insertMention%",
+    "category": "Chat"
    }
   ],
+  "keybindings": [
+   {
+    "command": "lens.chat.insertMention",
+    "key": "alt+k",
+    "when": "editorTextFocus"
+   }
+  ],
+  "configuration": {
+   "title": "%config.title%",
+   "properties": {
+    "lens.chat.attachOpenFile": {
+     "type": "boolean",
+     "default": true,
+     "description": "%config.attachOpenFile%"
+    },
+    "lens.chat.autoCompactThreshold": {
+     "type": "number",
+     "default": 0,
+     "minimum": 0,
+     "maximum": 100,
+     "markdownDescription": "%config.autoCompactThreshold%"
+    }
+   }
+  },
   "viewsContainers": {
    "secondarySidebar": [
     {

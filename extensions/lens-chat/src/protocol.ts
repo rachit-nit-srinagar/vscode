@@ -1,3 +1,6 @@
+import type { CheckpointRequest } from './checkpoints';
+import type { EditorContextInfo } from './editorContext';
+
 export interface ILensEngineRuntime {
 	readonly opencodeUrl: string;
 	readonly opencodeUsername: string;
@@ -43,6 +46,10 @@ export type WebviewToHost =
 	| { type: 'session.status' }
 	| { type: 'session.messages'; sessionID: string }
 	| { type: 'session.command'; sessionID: string; command: string; arguments?: string; agent?: string; variant?: string }
+	/** `/compact` and auto-compaction: the engine summarizes the chat with this model. */
+	| { type: 'session.summarize'; sessionID: string; model: SessionPromptModel; auto?: boolean }
+	/** Lens Chat's own settings (for example `lens.chat.autoCompactThreshold`); also pushed as a result when they change. */
+	| { type: 'chat.settings' }
 	| { type: 'find.files'; query: string }
 	| { type: 'find.symbols'; query: string }
 	| { type: 'session.diff'; sessionID: string }
@@ -66,11 +73,16 @@ export type WebviewToHost =
 	| { type: 'providers.get' }
 	| { type: 'providers.save'; config: Record<string, unknown>; apiKey?: string; clearApiKey?: boolean }
 	| { type: 'providers.remove'; provider: string }
-	| { type: 'providers.fetchModels'; provider: string };
+	| { type: 'providers.fetchModels'; provider: string }
+	| CheckpointRequest;
 
 export type HostToWebview =
 	| { type: 'boot'; runtime?: ILensEngineRuntime; workspace?: string; userConfig?: ILensUserConfig }
 	| { type: 'error'; message: string }
 	| { type: 'event'; payload: unknown }
 	| { type: 'result'; requestType: string; data: unknown }
-	| { type: 'command'; action: 'new' | 'history' };
+	| { type: 'command'; action: 'new' | 'history' }
+	/** The active file or selection the composer may attach; undefined when there is none or it is excluded. */
+	| { type: 'editorContext'; context?: EditorContextInfo }
+	/** Alt+K: insert this `@path#L5-10` mention into the composer and focus it. */
+	| { type: 'insertMention'; text: string };

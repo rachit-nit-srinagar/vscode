@@ -7,6 +7,8 @@ export type ChatPart = {
 	tool?: string;
 	callID?: string;
 	filename?: string;
+	/** Added by the engine for the model, not typed by the user. */
+	synthetic?: boolean;
 	mime?: string;
 	url?: string;
 	name?: string;

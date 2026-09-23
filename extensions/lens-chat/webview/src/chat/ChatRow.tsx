@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Show, Switch } from 'solid-js';
+import { createMemo, createSignal, For, Match, Show, Switch, type JSX } from 'solid-js';
 import { fileChangesFromPart, isFileChangeTool, previewLines, type FileChange } from './fileChange';
 import { isQuestionTool, readPreviewFromPart, type ReadPreview } from './fileRead';
 import { asTodos, isCancelledStatus, isVisiblePart, messageRole, shortPath, statusLabel, toolLabel, toolLanguage, toolOutput, toolTarget } from './format';
@@ -11,7 +11,7 @@ import type { ChatMessage, ChatPart, QuestionRequest } from './types';
 import { vscode } from '../vscode';
 import { ProviderErrorView } from './ProviderError';
 
-export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: boolean; questions?: QuestionRequest[] }) {
+export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: boolean; questions?: QuestionRequest[]; rewound?: boolean; userActions?: JSX.Element }) {
 	const role = createMemo(() => messageRole(props.message));
 	const parts = createMemo(() => (props.message.parts ?? []).filter(isVisiblePart));
 	const reads = createMemo(() => (props.message.parts ?? []).flatMap(part => {
@@ -28,7 +28,7 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 
 	return (
 		<Show when={parts().length > 0 || !!error()}>
-			<div class={`lens-row lens-row-${role()}`}>
+			<div class={`lens-row lens-row-${role()}${props.rewound ? ' lens-rewound' : ''}`}>
 				<Show when={role() === 'user'} fallback={
 					<For each={groups()}>
 						{group => (
@@ -63,7 +63,11 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 						)}
 					</For>
 				}>
-					<UserBubble parts={parts()} />
+					{/* The engine records a compaction as a user message holding only a compaction part. */}
+					<Show when={parts().some(part => part.type === 'compaction')} fallback={<UserBubble parts={parts()} />}>
+						<div class="lens-muted-row lens-compaction-row">Conversation compacted: the summary below replaces the messages above.</div>
+					</Show>
+					{props.userActions}
 				</Show>
 				<Show when={error()}>
 					<ProviderErrorView text={error()!} />
@@ -86,7 +90,8 @@ function messageError(message: ChatMessage): string | undefined {
 }
 
 function UserBubble(props: { parts: ChatPart[] }) {
-	const text = createMemo(() => props.parts.filter(part => part.type === 'text').map(part => part.text ?? '').join('\n').trim());
+	// Synthetic parts are what the engine added for the model (e.g. the text of an attached file), not what the user typed.
+	const text = createMemo(() => props.parts.filter(part => part.type === 'text' && !part.synthetic).map(part => part.text ?? '').join('\n').trim());
 	const files = createMemo(() => props.parts.filter(part => part.type === 'file' || !!part.filename || !!part.url));
 	return (
 		<div class="lens-composer-box lens-user-message">

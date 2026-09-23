@@ -2454,3 +2454,196 @@ button.lens-picker-row:focus-visible {
 .lens-perr-meta a {
 	color: var(--vscode-textLink-foreground);
 }
+
+/* Follow-ups queued while a turn runs */
+.lens-followups {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 6px 8px;
+	border: 1px dashed var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	background: var(--vscode-editorWidget-background);
+}
+
+.lens-followups-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 11.5px;
+}
+
+.lens-followup {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+}
+
+.lens-followup-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lens-followup-files {
+	flex: 0 0 auto;
+	font-size: 11.5px;
+}
+
+.lens-followup-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	resize: vertical;
+	font: inherit;
+	color: var(--vscode-input-foreground);
+	background: var(--vscode-input-background);
+	border: 1px solid var(--vscode-focusBorder);
+	border-radius: var(--lens-radius);
+	padding: 4px 6px;
+}
+
+/* Checkpoints: the rewind menu on user messages and the "Undo rewind" banner. */
+.lens-row-user {
+	position: relative;
+}
+
+.lens-rewind {
+	position: absolute;
+	top: 14px;
+	right: 4px;
+	z-index: 5;
+	opacity: 0;
+	transition: opacity 120ms ease;
+}
+
+.lens-row-user:hover .lens-rewind,
+.lens-rewind:focus-within,
+.lens-rewind.open {
+	opacity: 1;
+}
+
+.lens-rewind-trigger {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: 6px;
+	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
+	color: var(--vscode-foreground);
+	cursor: pointer;
+}
+
+.lens-rewind-trigger:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+.lens-rewind-menu {
+	position: absolute;
+	top: 26px;
+	right: 0;
+	min-width: 220px;
+	display: flex;
+	flex-direction: column;
+	padding: 4px;
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+	border-radius: var(--lens-radius);
+	background: var(--vscode-menu-background, var(--vscode-editor-background));
+	box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.25));
+}
+
+.lens-rewind-item {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	padding: 6px 8px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--vscode-menu-foreground, var(--vscode-foreground));
+	text-align: left;
+	cursor: pointer;
+}
+
+.lens-rewind-item:hover,
+.lens-rewind-item:focus-visible {
+	background: var(--vscode-list-hoverBackground);
+}
+
+.lens-rewound {
+	opacity: 0.45;
+}
+
+.lens-rewind-banner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+/* Editor context chip: the active file or selection sent with the next message. */
+.lens-editor-context {
+	display: flex;
+	padding: 6px 8px 0;
+}
+
+.lens-editor-context-chip {
+	max-width: 100%;
+	min-width: 0;
+	background: var(--vscode-input-background);
+	color: var(--vscode-foreground);
+	border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+}
+
+.lens-editor-context-chip .lens-muted {
+	color: var(--vscode-descriptionForeground);
+}
+
+.lens-editor-context-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--vscode-editor-font-family);
+}
+
+/* Context meter: a ring in the composer toolbar showing how full the chat's context window is. */
+.lens-context-meter {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	flex: 0 0 auto;
+	padding: 0 4px;
+	font-size: 11px;
+	color: var(--vscode-descriptionForeground);
+	cursor: default;
+	user-select: none;
+}
+
+.lens-context-meter-track {
+	stroke: color-mix(in srgb, var(--vscode-descriptionForeground) 30%, transparent);
+}
+
+.lens-context-meter-fill {
+	stroke: var(--vscode-descriptionForeground);
+}
+
+.lens-context-meter.warn .lens-context-meter-fill {
+	stroke: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.lens-context-meter.critical .lens-context-meter-fill {
+	stroke: var(--vscode-editorError-foreground, #f14c4c);
+}
+
+.lens-context-meter.critical .lens-context-meter-label {
+	color: var(--vscode-editorError-foreground, #f14c4c);
+}

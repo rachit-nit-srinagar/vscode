@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { ChatRow } from './chat/ChatRow';
+import { createCheckpoints, RewindBanner, RewindMenu } from './chat/Checkpoints';
 import { isQuestionTool } from './chat/fileRead';
 import { formatSessionTitle, isCancelledStatus } from './chat/format';
 import { ImageLightbox } from './chat/ImageLightbox';
@@ -28,9 +29,27 @@ import {
 	UNSUPPORTED_ATTACHMENT_MESSAGE,
 } from './chat/attachments';
 import { applyChatEvent, eventSessionID } from './chat/streamEvents';
+import { ContextMeter } from './chat/ContextMeter';
+import { autoCompactDecision, COMPACT_COMMAND, COMPACT_DESCRIPTION, contextUsage, normalizeThreshold } from './chat/contextMeter';
+import { FollowUpQueue } from './chat/FollowUpQueue';
+import {
+	createTurnBoundaryWatcher,
+	dropFollowUps,
+	editFollowUp,
+	enqueueFollowUp,
+	holdFollowUps,
+	newFollowUpId,
+	queuedFor,
+	releaseFollowUps,
+	removeFollowUp,
+	restoreFollowUps,
+	takeFollowUp,
+	type FollowUpState,
+} from './chat/followUps';
 import { ExtensionsView } from './settings/ExtensionsView';
 import { ProvidersView } from './settings/ProvidersView';
 import { ProviderErrorView } from './chat/ProviderError';
+import { appendMention, createEditorContext, EditorContextChip } from './chat/EditorContextChip';
 import { readSavedState, saveState, vscode } from './vscode';
 
 type Tab = { id: string; title: string };
@@ -94,8 +113,24 @@ function ChatApp() {
 	const [slash, setSlash] = createSignal<SlashItem[]>([]);
 	const [slashOpen, setSlashOpen] = createSignal(false);
 	const [attachments, setAttachments] = createSignal<Attachment[]>([]);
+	// The active file or selection offered by the extension host (already checked against the exclusion rules).
+	const editorContext = createEditorContext();
 	const [permissions, setPermissions] = createSignal<PermissionRequest[]>([]);
 	const [questions, setQuestions] = createSignal<QuestionRequest[]>([]);
+	const checkpoints = createCheckpoints({
+		active,
+		messages,
+		openSession: (id, title) => {
+			setTabs(current => current.some(tab => tab.id === id) ? current : [...current, { id, title }]);
+			selectTab(id);
+		},
+		setError: message => setError(message),
+		restoreDraft: text => {
+			if (!draft().trim()) {
+				setDraft(text);
+			}
+		},
+	});
 	let fileInput: HTMLInputElement | undefined;
 	let pendingPrompt: PendingPrompt | undefined;
 	let pendingCommand: PendingCommand | undefined;
@@ -104,7 +139,14 @@ function ChatApp() {
 	// Counts turns the user starts, so a status reply requested before a new turn began cannot mark it idle.
 	let turnSeq = 0;
 	let statusSeq = -1;
-	const slashCatalog: SlashItem[] = [];
+	// `/compact` is Lens's own: it runs through the engine's summarize route, not as a prompt or engine command.
+	const slashCatalog: SlashItem[] = [{ kind: 'command', name: COMPACT_COMMAND, description: COMPACT_DESCRIPTION }];
+	// Messages sent while a turn runs, per session; each goes out when its session's run ends.
+	const [followUps, setFollowUps] = createSignal<FollowUpState>(restoreFollowUps(readSavedState().followUps));
+	const activeFollowUps = createMemo(() => queuedFor(followUps(), active()));
+	const turnBoundaries = createTurnBoundaryWatcher(sessionID => sendNextFollowUp(sessionID));
+	onCleanup(() => turnBoundaries.dispose());
+	createEffect(() => saveState({ followUps: followUps().queued }));
 
 	const visibleAgents = createMemo(() => {
 		const listed = agents().filter(item => item.name && item.mode !== 'subagent' && !item.hidden);
@@ -119,6 +161,11 @@ function ChatApp() {
 	const showModelSearch = createMemo(() => modelChoices().length > 8);
 	// Undefined (model list not loaded yet, or model unrecognized) means "don't warn"; only an explicit false blocks images.
 	const currentModelSupportsImage = createMemo(() => modelChoices().find(choice => choice.value === model())?.supportsImage);
+	// Context meter: the last reply's tokens against its model's context window (from the provider list).
+	const [autoCompactThreshold, setAutoCompactThreshold] = createSignal(0);
+	const contextLimitFor = (providerID: string, modelID: string) => modelChoices().find(choice => choice.value === `${providerID}/${modelID}`
+		|| (choice.value.startsWith(`${providerID}/`) && choice.modelId === modelID))?.contextLimit;
+	const currentContextUsage = createMemo(() => active() ? contextUsage(messages(), contextLimitFor) : undefined);
 	const currentModelLabel = createMemo(() => pickerModels().find(choice => choice.value === model())?.label ?? shortModelLabel(model()));
 	const agentTriggerLabel = createMemo(() => agentDisplayName(agent()));
 
@@ -166,12 +213,22 @@ function ChatApp() {
 				}
 			} else if (data.type === 'error') {
 				pendingPrompt = undefined;
+				if (active()) {
+					setFollowUps(state => holdFollowUps(state, active()!));
+				}
 				setBusy(false);
 				setError(readableError(data.message));
 			} else if (data.type === 'result') {
 				handleResult(data.requestType, data.data);
 			} else if (data.type === 'event') {
 				handleEvent(data.payload);
+			} else if (data.type === 'editorContext') {
+				editorContext.update(data.context);
+			} else if (data.type === 'insertMention' && typeof data.text === 'string') {
+				setDraft(current => appendMention(current, data.text));
+				const input = document.querySelector<HTMLTextAreaElement>('textarea.lens-input');
+				input?.focus();
+				input?.setSelectionRange(draft().length, draft().length);
 			} else if (data.type === 'command') {
 				if (data.action === 'new') {
 					createSession();
@@ -186,6 +243,7 @@ function ChatApp() {
 		};
 		window.addEventListener('message', onMessage);
 		vscode.postMessage({ type: 'ready' });
+		vscode.postMessage({ type: 'chat.settings' });
 		const onPointerDown = (event: PointerEvent) => {
 			const target = event.target as HTMLElement | null;
 			if (target?.closest('.lens-picker-panel, .lens-picker-trigger')) {
@@ -209,6 +267,17 @@ function ChatApp() {
 				}
 				if (historyOpen()) {
 					setHistoryOpen(false);
+					return;
+				}
+				if (slashOpen() || mentions().length) {
+					setSlashOpen(false);
+					setMentions([]);
+					return;
+				}
+				// Last fallback: Escape in the composer stops the running turn, as the Stop button does.
+				if (busy() && active() && (event.target as HTMLElement | null)?.closest?.('.lens-input')) {
+					event.preventDefault();
+					stopTurn();
 					return;
 				}
 				closePicker();
@@ -246,6 +315,21 @@ function ChatApp() {
 	}
 
 	function handleResult(requestType: string, data: unknown) {
+		if (requestType === 'chat.settings') {
+			setAutoCompactThreshold(normalizeThreshold((data as { autoCompactThreshold?: unknown } | undefined)?.autoCompactThreshold));
+			return;
+		}
+		if (requestType === 'session.summarize') {
+			const sessionID = (data as { sessionID?: string } | undefined)?.sessionID;
+			if (sessionID && sessionID === active()) {
+				syncBusy();
+				vscode.postMessage({ type: 'session.messages', sessionID });
+			}
+			return;
+		}
+		if (checkpoints.handleResult(requestType, data)) {
+			return;
+		}
 		if (requestType === 'session.create') {
 			const session = data as { id?: string; title?: string };
 			if (!session?.id) {
@@ -346,6 +430,9 @@ function ChatApp() {
 			vscode.postMessage({ type: 'permission.list' });
 		} else if (requestType === 'session.delete' || requestType === 'session.close') {
 			const id = (data as { sessionID?: string })?.sessionID;
+			if (id) {
+				setFollowUps(state => dropFollowUps(state, id));
+			}
 			const current = tabs();
 			const remaining = current.filter(tab => tab.id !== id);
 			setTabs(remaining);
@@ -369,6 +456,12 @@ function ChatApp() {
 		const event = payload as { type?: string; properties?: { part?: ChatPart; sessionID?: string; info?: { id?: string; title?: string }; error?: { name?: string; message?: string; data?: { message?: string } }; status?: { type?: string; attempt?: number; message?: string; next?: number } } };
 		const eventType = String(event?.type ?? '');
 		const sessionID = eventSessionID(payload);
+		checkpoints.handleEvent(payload);
+		// A failed run keeps its queued follow-ups for the user rather than sending them into the failure.
+		if (eventType === 'session.error' && sessionID) {
+			setFollowUps(state => holdFollowUps(state, sessionID));
+		}
+		turnBoundaries.observe(eventType, sessionID, event?.properties?.status?.type);
 		if (eventType === 'session.updated') {
 			// The engine names a session once it has enough of the conversation to summarize it; reflect
 			// that in the tab regardless of which tab is currently active.
@@ -484,6 +577,7 @@ function ChatApp() {
 
 	function closeTab(id: string) {
 		setHistoryOpen(false);
+		setFollowUps(state => dropFollowUps(state, id));
 		if (busy() && active() === id) {
 			vscode.postMessage({ type: 'session.abort', sessionID: id });
 			setBusy(false);
@@ -495,6 +589,106 @@ function ChatApp() {
 		statusSeq = turnSeq;
 		vscode.postMessage({ type: 'session.status' });
 	}
+
+	/** Stops the running turn. Its queued follow-ups stay on screen instead of starting a new run. */
+	function stopTurn() {
+		const sessionID = active();
+		if (!sessionID) {
+			return;
+		}
+		setFollowUps(state => holdFollowUps(state, sessionID));
+		vscode.postMessage({ type: 'session.abort', sessionID });
+	}
+
+	/** Sends a session's oldest queued follow-up, at a turn boundary or when the user asks for it. */
+	function sendNextFollowUp(sessionID: string, byUser = false) {
+		const state = followUps();
+		if (!byUser && state.held[sessionID]) {
+			return;
+		}
+		if (sessionID === active() && busy()) {
+			return;
+		}
+		if (!tabs().some(tab => tab.id === sessionID)) {
+			setFollowUps(current => dropFollowUps(current, sessionID));
+			return;
+		}
+		const { item, state: next } = takeFollowUp(releaseFollowUps(state, sessionID), sessionID);
+		if (!item) {
+			return;
+		}
+		setFollowUps(next);
+		if (sessionID === active()) {
+			setError(item.imageWarning ?? '');
+			promptSession(sessionID, item.text, item.parts);
+			return;
+		}
+		// A chat in another tab: nothing of it is on screen, so only the engine hears about it.
+		const ref = parseModelRef(model());
+		vscode.postMessage({
+			type: 'session.prompt',
+			sessionID,
+			text: item.text,
+			agent: agent(),
+			variant: effort(),
+			model: ref ? { providerID: ref.providerID, modelID: ref.modelID } : undefined,
+			parts: item.parts,
+		});
+	}
+
+	/** `/compact` (and auto-compaction): the engine replaces the conversation so far with a summary. */
+	function compactSession(auto = false) {
+		const sessionID = active();
+		if (!sessionID || !messages().some(message => message.info?.role === 'assistant')) {
+			setError('There is nothing to compact yet. Compacting summarizes a chat once it has replies.');
+			return;
+		}
+		if (busy()) {
+			setError('Wait for the current reply to finish, then run /compact.');
+			return;
+		}
+		const ref = parseModelRef(model());
+		if (!ref) {
+			setError('Pick a model before compacting this chat.');
+			return;
+		}
+		setError('');
+		turnSeq++;
+		setBusy(true);
+		vscode.postMessage({ type: 'session.summarize', sessionID, model: ref, auto });
+	}
+
+	// Auto-compaction: once a turn this view watched has settled, compact if the context is over the
+	// threshold. The engine still compacts on its own mid-turn when the window is completely full.
+	const watchedTurns = new Set<string>();
+	const autoCompactedReplies = new Set<string>();
+	createEffect(() => {
+		const sessionID = active();
+		if (!sessionID) {
+			return;
+		}
+		if (busy()) {
+			watchedTurns.add(sessionID);
+			return;
+		}
+		if (!watchedTurns.has(sessionID)) {
+			return;
+		}
+		const decision = autoCompactDecision(messages(), autoCompactThreshold(), contextLimitFor);
+		if (decision === 'wait') {
+			return;
+		}
+		watchedTurns.delete(sessionID);
+		const replyID = messages().at(-1)?.info?.id;
+		// A queued follow-up starts the next turn instead; that turn's end is checked again.
+		if (decision !== 'compact' || activeFollowUps().length || (replyID && autoCompactedReplies.has(replyID))) {
+			return;
+		}
+		if (replyID) {
+			autoCompactedReplies.add(replyID);
+		}
+		compactSession(true);
+	});
 
 	function promptSession(sessionID: string, text: string, parts: PendingPrompt['parts']) {
 		const ref = parseModelRef(model());
@@ -517,13 +711,21 @@ function ChatApp() {
 		if (!text && !attachments().length) {
 			return;
 		}
+		if (text === `/${COMPACT_COMMAND}` && !attachments().length) {
+			setDraft('');
+			setSlashOpen(false);
+			compactSession();
+			return;
+		}
 		// The engine still strips unsupported images and tells the model, but the user should learn that too.
 		// Set after createSession() below, since that clears the error banner on its own.
 		const imageWarning = attachments().length && currentModelSupportsImage() === false
 			? 'This model does not support image input; your images will be described to it as text instead.'
 			: '';
+		const contextPart = editorContext.take();
 		const parts = [
 			...(text ? [{ type: 'text' as const, text }] : []),
+			...(contextPart ? [contextPart] : []),
 			...attachments(),
 		];
 		setDraft('');
@@ -538,6 +740,12 @@ function ChatApp() {
 			createSession();
 			return;
 		}
+		if (busy()) {
+			// The agent is still working: queue this as a follow-up for when the turn ends.
+			setFollowUps(state => enqueueFollowUp(state, sessionID, { id: newFollowUpId(), text, parts, imageWarning: imageWarning || undefined }));
+			return;
+		}
+		setFollowUps(state => releaseFollowUps(state, sessionID));
 		setError(imageWarning);
 		promptSession(sessionID, text, parts);
 	}
@@ -576,6 +784,13 @@ function ChatApp() {
 	}
 
 	function applySlash(item: SlashItem) {
+		if (item.kind === 'command' && item.name === COMPACT_COMMAND) {
+			setDraft('');
+			setSlashOpen(false);
+			closePicker();
+			compactSession();
+			return;
+		}
 		const rest = draft().replace(/(^|\s)\/([^\s]*)$/, ' ').trim();
 		setDraft('');
 		setSlashOpen(false);
@@ -881,7 +1096,14 @@ function ChatApp() {
 					</Show>
 					<For each={messages()}>
 						{(message, index) => (
-							<ChatRow busy={busy()} isLast={index() === messages().length - 1} message={message} questions={sessionQuestions()} />
+							<ChatRow
+								busy={busy()}
+								isLast={index() === messages().length - 1}
+								message={message}
+								questions={sessionQuestions()}
+								rewound={checkpoints.firstRewound() >= 0 && index() >= checkpoints.firstRewound()}
+								userActions={message.info?.id ? <RewindMenu disabled={busy() || !!checkpoints.pending()} onPick={action => checkpoints.run(action, message)} /> : undefined}
+							/>
 						)}
 					</For>
 					<For each={unmatchedQuestions()}>
@@ -916,6 +1138,9 @@ function ChatApp() {
 							)}
 						</For>
 					</div>
+				</Show>
+				<Show when={checkpoints.revert()}>
+					{revert => <RewindBanner revert={revert()} pending={!!checkpoints.pending()} onUndo={checkpoints.undo} />}
 				</Show>
 				<Show when={reviewDiffs().length}>
 					<div class="lens-dock">
@@ -967,6 +1192,14 @@ function ChatApp() {
 							</For>
 						</div>
 					</Show>
+					<FollowUpQueue
+						items={activeFollowUps()}
+						busy={busy()}
+						held={!!active() && !!followUps().held[active()!]}
+						onEdit={(id, text) => active() && setFollowUps(state => editFollowUp(state, active()!, id, text))}
+						onRemove={id => active() && setFollowUps(state => removeFollowUp(state, active()!, id))}
+						onSendNow={() => active() && sendNextFollowUp(active()!, true)}
+					/>
 					<div
 						class="lens-composer-box"
 						onClick={handleImageThumbClick}
@@ -974,6 +1207,7 @@ function ChatApp() {
 						onDragOver={handleComposerDragOver}
 						onDrop={handleComposerDrop}
 					>
+						<EditorContextChip context={editorContext.current()} onRemove={() => editorContext.dismiss()} />
 						<Show when={attachments().length}>
 							<div class="lens-image-row lens-attachments">
 								<For each={attachments()}>
@@ -1009,14 +1243,15 @@ function ChatApp() {
 						</Show>
 						<textarea
 							class="lens-input"
-							placeholder="Ask Lens to plan or build…"
+							placeholder={busy() && active() ? 'Ask Lens a follow-up; it is sent when this reply ends (Esc to stop)' : 'Ask Lens to plan or build…'}
 							rows={2}
 							value={draft()}
 							onInput={event => onDraftInput(event.currentTarget.value)}
 							onKeyDown={event => {
 								if (event.key === 'Enter' && !event.shiftKey) {
 									event.preventDefault();
-									if (busy()) return;
+									// While a turn runs, send() queues the message; only a chat still being created blocks it.
+									if (busy() && !active()) return;
 									send();
 								}
 							}}
@@ -1157,6 +1392,7 @@ function ChatApp() {
 							</button>
 							<span class="lens-effort-chip" aria-hidden="true">{effort()}</span>
 							<span class="lens-toolbar-spacer" />
+							<ContextMeter usage={currentContextUsage()} threshold={autoCompactThreshold()} />
 							<button class="lens-icon-btn" title="Attach" onClick={() => fileInput?.click()}>
 								<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M10.3 2.54a2.75 2.75 0 0 1 3.89 3.89l-6.4 6.4a3.75 3.75 0 0 1-5.3-5.3l5.48-5.48a.75.75 0 0 1 1.06 1.06L4.55 8.59a2.25 2.25 0 0 0 3.18 3.18l6.4-6.4a1.25 1.25 0 1 0-1.77-1.77L6.54 9.42a.75.75 0 1 1-1.06-1.06l5.82-5.82Z" /></svg>
 							</button>
@@ -1180,7 +1416,7 @@ function ChatApp() {
 								class={`lens-send-btn ${busy() ? 'stop' : ''}`}
 								title={busy() ? 'Stop' : 'Send'}
 								disabled={!busy() && !draft().trim() && !attachments().length}
-								onClick={() => busy() ? vscode.postMessage({ type: 'session.abort', sessionID: active() }) : send()}
+								onClick={() => busy() ? stopTurn() : send()}
 							>
 								<Show when={!busy()} fallback={<span class="lens-stop-icon" />}>
 									<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M3.2 7.25h7.04L7.12 4.13a.75.75 0 1 1 1.06-1.06l4.5 4.5a.75.75 0 0 1 0 1.06l-4.5 4.5a.75.75 0 1 1-1.06-1.06l3.12-3.12H3.2a.75.75 0 0 1 0-1.5Z" /></svg>

@@ -3,6 +3,8 @@ import { commands, EventEmitter, extensions, OverviewRulerLane, Range, TextEdito
 import { randomBytes } from 'crypto';
 import { readFileSync } from 'fs';
 import { basename, isAbsolute, join } from 'path';
+import { isCheckpointRequest, runCheckpoint, withoutRewoundTurns } from './checkpoints';
+import { EditorContextTracker } from './editorContextTracker';
 import { OpencodeHostClient } from './opencodeClient';
 import type { HostToWebview, ILensUserConfig, McpConfig, PromptPart, WebviewToHost } from './protocol';
 
@@ -16,6 +18,7 @@ export function activate(context: ExtensionContext): void {
 	context.subscriptions.push(
 		workspace.registerTextDocumentContentProvider(LENS_DIFF_SCHEME, diffs),
 		host.insertDecoration,
+		host.editorContext,
 		window.registerWebviewViewProvider('lens.chat', new LensWebviewView(host, 'chat'), { webviewOptions: { retainContextWhenHidden: true } }),
 		window.registerWebviewViewProvider('lens.providers', new LensWebviewView(host, 'providers'), { webviewOptions: { retainContextWhenHidden: true } }),
 		window.registerWebviewViewProvider('lens.extensions', new LensWebviewView(host, 'extensions'), { webviewOptions: { retainContextWhenHidden: true } }),
@@ -31,6 +34,11 @@ export function activate(context: ExtensionContext): void {
 			host.postChat({ type: 'command', action: 'history' });
 		}),
 	);
+	context.subscriptions.push(workspace.onDidChangeConfiguration(event => {
+		if (event.affectsConfiguration('lens.chat')) {
+			host.postChatSettings();
+		}
+	}));
 	// The secondary sidebar is visible by default (configurationDefaults), but a fresh profile has no view
 	// selected inside it, so Lens Chat stays empty until the user clicks its tab. Select it once, the first
 	// time this profile ever activates, without fighting the user's own choice on every later launch.
@@ -81,6 +89,7 @@ class LensChatHost {
 	private chatWebview: Webview | undefined;
 	private pendingChatCommand: Extract<HostToWebview, { type: 'command' }> | undefined;
 	readonly insertDecoration: TextEditorDecorationType;
+	readonly editorContext = new EditorContextTracker(message => this.postToChat(message));
 
 	constructor(
 		readonly context: ExtensionContext,
@@ -114,16 +123,33 @@ class LensChatHost {
 		this.pendingChatCommand = message;
 	}
 
+	/** Posts to the chat webview if it exists; false when it has not been created yet. */
+	postToChat(message: HostToWebview): boolean {
+		if (!this.chatWebview) {
+			return false;
+		}
+		this.post(this.chatWebview, message);
+		return true;
+	}
+
 	private broadcast(message: HostToWebview): void {
 		for (const webview of this.webviews) {
 			this.post(webview, message);
 		}
 	}
 
+	/** Pushes Lens Chat's settings to every open view, as the reply to a `chat.settings` request would. */
+	postChatSettings(): void {
+		this.broadcast({ type: 'result', requestType: 'chat.settings', data: chatSettings() });
+	}
+
 	async handleMessage(webview: Webview, message: WebviewToHost): Promise<void> {
 		this.webviews.add(webview);
 		if (message.type === 'ready') {
 			await this.boot(webview);
+			if (webview === this.chatWebview) {
+				this.editorContext.chatReady();
+			}
 			return;
 		}
 		if (message.type === 'providers.open') {
@@ -148,6 +174,10 @@ class LensChatHost {
 			}
 			return;
 		}
+		if (message.type === 'chat.settings') {
+			this.post(webview, { type: 'result', requestType: message.type, data: chatSettings() });
+			return;
+		}
 		if (message.type === 'file.open') {
 			await this.openFileChange(message.path, message.addedLines ?? [], !!message.isNew);
 			return;
@@ -155,6 +185,10 @@ class LensChatHost {
 		const client = this.client;
 		if (!client) {
 			throw new Error('Lens engine is not running. Add an AI provider under Lens → AI Providers.');
+		}
+		if (isCheckpointRequest(message)) {
+			this.post(webview, { type: 'result', requestType: message.type, data: await runCheckpoint(client, message) });
+			return;
 		}
 
 		switch (message.type) {
@@ -202,6 +236,7 @@ class LensChatHost {
 			}
 			case 'session.prompt': {
 				const parts = message.parts?.length ? message.parts : [{ type: 'text', text: message.text } satisfies PromptPart];
+				await this.editorContext.checkPromptParts(parts);
 				const data = await client.request('POST', `/session/${encodeURIComponent(message.sessionID)}/message`, sessionPromptBody(message, parts));
 				this.post(webview, { type: 'result', requestType: message.type, data });
 				return;
@@ -230,6 +265,22 @@ class LensChatHost {
 					variant: message.variant,
 				});
 				this.post(webview, { type: 'result', requestType: message.type, data });
+				return;
+			}
+			case 'session.summarize': {
+				// Blocks until the engine has written the summary; its messages stream in as events meanwhile.
+				// `auto` stays false on the engine side: that flag makes the engine continue the turn after
+				// compacting, which only makes sense for its own mid-turn overflow compaction.
+				try {
+					await client.request('POST', `/session/${encodeURIComponent(message.sessionID)}/summarize`, {
+						providerID: message.model.providerID,
+						modelID: message.model.modelID,
+					});
+				} catch (error) {
+					const reason = error instanceof Error ? error.message : String(error);
+					throw new Error(`${message.auto ? 'Automatic compaction failed' : 'Could not compact this chat'}: ${reason}`);
+				}
+				this.post(webview, { type: 'result', requestType: message.type, data: { sessionID: message.sessionID, auto: !!message.auto } });
 				return;
 			}
 			case 'find.files': {
@@ -471,6 +522,10 @@ class LensChatHost {
 	}
 }
 
+function chatSettings(): { autoCompactThreshold: number } {
+	return { autoCompactThreshold: workspace.getConfiguration('lens.chat').get<number>('autoCompactThreshold', 0) };
+}
+
 function hostnameOf(url: string): string | undefined {
 	try {
 		return new URL(url).hostname;
@@ -551,7 +606,8 @@ async function sessionDiff(client: OpencodeHostClient, sessionID: string): Promi
 		.filter(info => info?.role === 'user' && info.id)
 		.map(info => info!.id!);
 
-	const perTurn = await Promise.all(userMessageIDs.map(messageID =>
+	// A rewound chat's later turns are undone on disk, so they no longer count as changes.
+	const perTurn = await Promise.all((await withoutRewoundTurns(client, sessionID, userMessageIDs)).map(messageID =>
 		client.request<unknown>('GET', `/session/${encodeURIComponent(sessionID)}/diff?messageID=${encodeURIComponent(messageID)}`)
 			.then(data => unwrapList(data))
 			.catch(() => []),

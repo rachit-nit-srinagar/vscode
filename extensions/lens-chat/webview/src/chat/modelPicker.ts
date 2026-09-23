@@ -8,6 +8,8 @@ export type ModelChoice = {
 	modelId: string;
 	group?: string;
 	supportsImage?: boolean;
+	/** The model's context window in tokens (`limit.context`), when the provider reports one. */
+	contextLimit?: number;
 };
 
 export type ModelGroup = {
@@ -74,12 +76,15 @@ export function parseModelChoices(data: unknown): ModelChoice[] {
 			const supportsImage = !!(capabilities && typeof capabilities === 'object' && 'input' in capabilities
 				&& capabilities.input && typeof capabilities.input === 'object' && 'image' in capabilities.input
 				&& capabilities.input.image);
+			const limit = info && typeof info === 'object' && 'limit' in info ? info.limit : undefined;
+			const context = limit && typeof limit === 'object' && 'context' in limit ? Number(limit.context) : NaN;
 			out.push({
 				value: `${provider.id}/${id}`,
 				label: name,
 				modelId: id,
 				group: deriveModelGroup(id),
 				supportsImage,
+				...(context > 0 ? { contextLimit: context } : {}),
 			});
 		}
 	}

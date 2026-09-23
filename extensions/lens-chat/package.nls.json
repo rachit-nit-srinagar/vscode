@@ -8,5 +8,9 @@
   "command.openChat": "Open Chat",
   "command.newChat": "New Chat",
   "command.history": "History",
+  "command.insertMention": "Mention Selection in Chat",
+  "config.title": "Lens Chat",
+  "config.attachOpenFile": "Offer the active file as context in Lens Chat when nothing is selected. A selection is always offered. Secret and key files, and files matched by files.exclude, search.exclude or .gitignore, are never offered.",
+  "config.autoCompactThreshold": "Compact a chat automatically after a reply once its context window is this full (percent, 1-100). `0` turns this off; the engine still compacts a chat when its context is completely full. Type `/compact` in Lens Chat to compact at any time.",
   "view.providers": "AI Providers"
 }
