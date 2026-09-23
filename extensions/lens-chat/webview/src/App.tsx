@@ -36,7 +36,7 @@ import { readSavedState, saveState, vscode } from './vscode';
 type Tab = { id: string; title: string };
 type SlashItem = { kind: 'command' | 'skill'; name: string; description?: string };
 type Attachment = { type: 'file'; mime: string; url: string; filename?: string };
-type PendingPrompt = { text: string; parts: Array<{ type: 'text'; text: string } | Attachment> };
+type PendingPrompt = { text: string; parts: Array<{ type: 'text'; text: string } | Attachment>; imageWarning?: string };
 type PendingCommand = { command: string; arguments: string };
 type PermissionRequest = { id: string; sessionID?: string; permission?: string; patterns?: string[] };
 type AgentInfo = { name?: string; mode?: string; hidden?: boolean };
@@ -111,6 +111,8 @@ function ChatApp() {
 	const groupedPickerModels = createMemo(() => groupModelChoices(filteredPickerModels()));
 	const pickerModels = createMemo(() => modelChoices().length ? modelChoices() : [{ value: DEFAULT_MODEL, label: 'Claude 5 Sonnet', modelId: 'gcp/claude-5-sonnet', group: 'gcp' } satisfies ModelChoice]);
 	const showModelSearch = createMemo(() => modelChoices().length > 8);
+	// Undefined (model list not loaded yet, or model unrecognized) means "don't warn"; only an explicit false blocks images.
+	const currentModelSupportsImage = createMemo(() => modelChoices().find(choice => choice.value === model())?.supportsImage);
 	const currentModelLabel = createMemo(() => pickerModels().find(choice => choice.value === model())?.label ?? shortModelLabel(model()));
 	const agentTriggerLabel = createMemo(() => agentDisplayName(agent()));
 
@@ -244,6 +246,9 @@ function ChatApp() {
 			pendingPrompt = undefined;
 			if (queuedPrompt) {
 				promptSession(session.id!, queuedPrompt.text, queuedPrompt.parts);
+				if (queuedPrompt.imageWarning) {
+					setError(queuedPrompt.imageWarning);
+				}
 			}
 			const queuedCommand = pendingCommand;
 			pendingCommand = undefined;
@@ -473,7 +478,11 @@ function ChatApp() {
 		if (!text && !attachments().length) {
 			return;
 		}
-		setError('');
+		// The engine still strips unsupported images and tells the model, but the user should learn that too.
+		// Set after createSession() below, since that clears the error banner on its own.
+		const imageWarning = attachments().length && currentModelSupportsImage() === false
+			? 'This model does not support image input; your images will be described to it as text instead.'
+			: '';
 		const parts = [
 			...(text ? [{ type: 'text' as const, text }] : []),
 			...attachments(),
@@ -484,11 +493,13 @@ function ChatApp() {
 		closePicker();
 		const sessionID = active();
 		if (!sessionID) {
-			pendingPrompt = { text, parts };
+			// createSession() below clears the error banner; re-applied once its session.create reply lands.
+			pendingPrompt = { text, parts, imageWarning };
 			setBusy(true);
 			createSession();
 			return;
 		}
+		setError(imageWarning);
 		promptSession(sessionID, text, parts);
 	}
 

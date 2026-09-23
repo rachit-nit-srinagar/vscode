@@ -7,6 +7,7 @@ export type ModelChoice = {
 	label: string;
 	modelId: string;
 	group?: string;
+	supportsImage?: boolean;
 };
 
 export type ModelGroup = {
@@ -42,11 +43,16 @@ export function parseModelChoices(data: unknown): ModelChoice[] {
 		for (const [modelID, info] of Object.entries(models)) {
 			const id = (info && typeof info === 'object' && 'id' in info && typeof info.id === 'string' && info.id) || modelID;
 			const name = (info && typeof info === 'object' && 'name' in info && typeof info.name === 'string' && info.name) || shortModelLabel(id);
+			const capabilities = info && typeof info === 'object' && 'capabilities' in info ? info.capabilities : undefined;
+			const supportsImage = !!(capabilities && typeof capabilities === 'object' && 'input' in capabilities
+				&& capabilities.input && typeof capabilities.input === 'object' && 'image' in capabilities.input
+				&& capabilities.input.image);
 			out.push({
 				value: `${provider.id}/${id}`,
 				label: name,
 				modelId: id,
 				group: deriveModelGroup(id),
+				supportsImage,
 			});
 		}
 	}
@@ -100,7 +106,7 @@ export function resolvePreferredModel(
 	return lensChoice?.value ?? choices[0]?.value;
 }
 
-function extractProviders(data: unknown): Array<{ id: string; models?: Record<string, { id?: string; name?: string }> }> {
+function extractProviders(data: unknown): Array<{ id: string; models?: Record<string, { id?: string; name?: string; capabilities?: unknown }> }> {
 	if (!data || typeof data !== 'object') {
 		return [];
 	}
@@ -108,12 +114,12 @@ function extractProviders(data: unknown): Array<{ id: string; models?: Record<st
 	const all = raw.all ?? raw.providers ?? data;
 	if (Array.isArray(all)) {
 		return all
-			.filter((item): item is { id?: string; models?: Record<string, { id?: string; name?: string }> } => !!item && typeof item === 'object')
+			.filter((item): item is { id?: string; models?: Record<string, { id?: string; name?: string; capabilities?: unknown }> } => !!item && typeof item === 'object')
 			.map(item => ({ id: String(item.id ?? ''), models: item.models }))
 			.filter(item => item.id && !/^\d+$/.test(item.id));
 	}
 	if (all && typeof all === 'object') {
-		return Object.entries(all as Record<string, { id?: string; models?: Record<string, { id?: string; name?: string }> }>)
+		return Object.entries(all as Record<string, { id?: string; models?: Record<string, { id?: string; name?: string; capabilities?: unknown }> }>)
 			.filter(([key, value]) => value && typeof value === 'object' && !!value.models)
 			.map(([key, value]) => ({ id: String(value.id ?? key), models: value.models }))
 			.filter(item => item.id && !/^\d+$/.test(item.id));
