@@ -384,6 +384,10 @@ function ChatApp() {
 	function createSession() {
 		setError('');
 		setHistoryOpen(false);
+		// The active tab is already an unsent chat; reuse it instead of piling up empty sessions in History.
+		if (active() && messages().length === 0 && tabs().some(tab => tab.id === active())) {
+			return;
+		}
 		const ref = parseModelRef(model());
 		vscode.postMessage({
 			type: 'session.create',
