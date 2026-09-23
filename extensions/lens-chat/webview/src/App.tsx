@@ -303,9 +303,17 @@ function ChatApp() {
 	}
 
 	function handleEvent(payload: unknown) {
-		const event = payload as { type?: string; properties?: { part?: ChatPart; sessionID?: string; error?: { name?: string; message?: string; data?: { message?: string } }; status?: { type?: string; attempt?: number; message?: string; next?: number } } };
+		const event = payload as { type?: string; properties?: { part?: ChatPart; sessionID?: string; info?: { id?: string; title?: string }; error?: { name?: string; message?: string; data?: { message?: string } }; status?: { type?: string; attempt?: number; message?: string; next?: number } } };
 		const eventType = String(event?.type ?? '');
 		const sessionID = eventSessionID(payload);
+		if (eventType === 'session.updated') {
+			// The engine names a session once it has enough of the conversation to summarize it; reflect
+			// that in the tab regardless of which tab is currently active.
+			const info = event.properties?.info;
+			if (info?.id && info.title) {
+				setTabs(current => current.map(tab => tab.id === info.id ? { ...tab, title: info.title! } : tab));
+			}
+		}
 		if (sessionID && sessionID !== active()) {
 			if (eventType.includes('permission')) {
 				vscode.postMessage({ type: 'permission.list' });
