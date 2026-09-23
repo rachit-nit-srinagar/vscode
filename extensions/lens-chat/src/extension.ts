@@ -1,6 +1,7 @@
 import type { ExtensionContext, TextDocumentContentProvider, TextEditorDecorationType, Webview, WebviewView, WebviewViewProvider } from 'vscode';
 import { commands, EventEmitter, OverviewRulerLane, Range, TextEditorRevealType, ThemeColor, Uri, window, workspace } from 'vscode';
 import { randomBytes } from 'crypto';
+import { readFileSync } from 'fs';
 import { basename, isAbsolute, join } from 'path';
 import { OpencodeHostClient } from './opencodeClient';
 import type { HostToWebview, ILensUserConfig, McpConfig, PromptPart, WebviewToHost } from './protocol';
@@ -425,8 +426,13 @@ class LensChatHost {
 		this.post(webview, { type: 'boot', runtime, workspace: workspaceFolder, userConfig });
 	}
 
+	private bundle: string | undefined;
+
 	renderHtml(webview: Webview, view: 'chat' | 'providers' | 'extensions'): string {
-		const scriptUri = webview.asWebviewUri(Uri.joinPath(this.context.extensionUri, 'media', 'webview', 'index.js'));
+		// Inlined rather than loaded with src=: the webview resource loader can serve a file twice
+		// when several webviews request it at once, which breaks the script and leaves the view blank.
+		this.bundle ??= readFileSync(join(this.context.extensionPath, 'media', 'webview', 'index.js'), 'utf8')
+			.replace(/<(\/script|!--)/gi, '\\x3C$1');
 		const nonce = randomBytes(16).toString('base64');
 		return `<!DOCTYPE html>
 <html lang="en">
@@ -437,7 +443,7 @@ class LensChatHost {
 </head>
 <body style="margin:0;height:100%;color:var(--vscode-foreground);background:var(--vscode-sideBar-background);font-family:var(--vscode-font-family);">
 	<div id="root" data-view="${view}" data-media="${webview.asWebviewUri(Uri.joinPath(this.context.extensionUri, 'media'))}" style="height:100%;"></div>
-	<script nonce="${nonce}" src="${scriptUri}"></script>
+	<script nonce="${nonce}">${this.bundle}</script>
 </body>
 </html>`;
 	}
