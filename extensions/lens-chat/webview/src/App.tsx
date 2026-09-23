@@ -95,6 +95,8 @@ function ChatApp() {
 	let fileInput: HTMLInputElement | undefined;
 	let pendingPrompt: PendingPrompt | undefined;
 	let pendingCommand: PendingCommand | undefined;
+	// Restoring open tabs happens once, off the first session.list reply after boot.
+	let restoreTabsOnBoot = false;
 	const slashCatalog: SlashItem[] = [];
 
 	const visibleAgents = createMemo(() => {
@@ -122,6 +124,17 @@ function ChatApp() {
 		}
 	});
 
+	// Remember which tabs are open so a reload can bring them back instead of leaving an empty "New chat".
+	// Held off until the boot-time restore has run (or was never needed), so a fresh webview's initial
+	// empty tab list does not overwrite the saved one before it gets a chance to be read back.
+	const [readyToPersistTabs, setReadyToPersistTabs] = createSignal(false);
+	createEffect(() => {
+		if (!readyToPersistTabs()) {
+			return;
+		}
+		saveState({ openTabs: tabs().map(tab => tab.id), activeTab: active() });
+	});
+
 	onMount(() => {
 		const onMessage = (event: MessageEvent) => {
 			const data = event.data;
@@ -131,6 +144,7 @@ function ChatApp() {
 				setEngine(!!data.runtime);
 				setEngineDefault(typeof data.runtime?.defaultModel === 'string' ? data.runtime.defaultModel : undefined);
 				if (data.runtime) {
+					restoreTabsOnBoot = true;
 					vscode.postMessage({ type: 'agent.list' });
 					vscode.postMessage({ type: 'provider.list' });
 					vscode.postMessage({ type: 'session.list' });
@@ -138,6 +152,8 @@ function ChatApp() {
 					vscode.postMessage({ type: 'skill.list' });
 					vscode.postMessage({ type: 'permission.list' });
 					vscode.postMessage({ type: 'question.list' });
+				} else {
+					setReadyToPersistTabs(true);
 				}
 			} else if (data.type === 'error') {
 				pendingPrompt = undefined;
@@ -234,7 +250,24 @@ function ChatApp() {
 				runCommand(session.id!, queuedCommand.command, queuedCommand.arguments);
 			}
 		} else if (requestType === 'session.list') {
-			setHistory(Array.isArray(data) ? data as HistoryItem[] : []);
+			const list = Array.isArray(data) ? data as HistoryItem[] : [];
+			setHistory(list);
+			if (restoreTabsOnBoot) {
+				restoreTabsOnBoot = false;
+				const saved = readSavedState();
+				const restored = (saved.openTabs ?? [])
+					.map(id => list.find(item => item.id === id))
+					.filter((item): item is HistoryItem => !!item)
+					.map(item => ({ id: item.id, title: item.title || 'New chat' }));
+				if (restored.length) {
+					setTabs(restored);
+					const activeId = saved.activeTab && restored.some(tab => tab.id === saved.activeTab) ? saved.activeTab : restored[0].id;
+					setActive(activeId);
+					vscode.postMessage({ type: 'session.messages', sessionID: activeId });
+					vscode.postMessage({ type: 'session.diff', sessionID: activeId });
+				}
+				setReadyToPersistTabs(true);
+			}
 		} else if (requestType === 'session.messages') {
 			const list = Array.isArray(data)
 				? data
