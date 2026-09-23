@@ -26,7 +26,7 @@ export const vscode: VsCodeApi = {
 	},
 };
 
-type SavedState = { model?: string };
+type SavedState = { model?: string; effort?: string };
 
 /** Webview state survives reloads of the panel and the window. */
 export function readSavedState(): SavedState {

@@ -44,6 +44,8 @@ const READY_TIMEOUT_MS = 90_000;
 const MAX_RESTARTS = 5;
 const DEFAULT_CONTEXT_TOKENS = 128_000;
 const DEFAULT_OUTPUT_TOKENS = 8192;
+// Kept in sync with Lens Chat's own EFFORTS list (extensions/lens-chat/webview/src/App.tsx).
+const EFFORT_LEVELS = ['none', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 // Env vars that must never reach the engine: the agent can read its own environment.
 const SECRET_ENV = ['LITELLM_API_KEY', 'LITELLM_BASE_URL', 'LENS_DEFAULT_MODEL'];
 
@@ -318,6 +320,13 @@ function engineConfig(facade: ILensFacadeAddress, models: ILensUpstreamModel[]) 
 					modalities: { input: model.vision ? ['text', 'image'] : ['text'], output: ['text'] },
 					// Without an explicit limit opencode asks for more output tokens than many providers allow.
 					limit: { context: model.contextWindow ?? DEFAULT_CONTEXT_TOKENS, output: Math.min(model.maxOutputTokens ?? DEFAULT_OUTPUT_TOKENS, model.contextWindow ?? DEFAULT_CONTEXT_TOKENS) },
+					// Lens Chat's effort picker (none/low/medium/high/xhigh/max) sends `variant: <id>` on every
+					// request; without a matching variant here the engine has nothing to attach and the effort
+					// choice never reaches the provider. The key must be the AI SDK's own camelCase
+					// `reasoningEffort`, not the wire-level `reasoning_effort`: the openai-compatible package
+					// validates providerOptions against its own schema and silently drops unrecognized keys,
+					// so a snake_case key here is stripped before it ever reaches the request body.
+					variants: Object.fromEntries(EFFORT_LEVELS.map(id => [id, { reasoningEffort: id }])),
 				}])),
 			},
 		},

@@ -80,7 +80,7 @@ function ChatApp() {
 	const [engineDefault, setEngineDefault] = createSignal<string | undefined>();
 	// A failed reply already shows its error card; the banner would repeat it. Retries have no card, so they stay.
 	const errorShownInConversation = createMemo(() => !error().startsWith('Retrying') && !!messages().at(-1)?.info?.error);
-	const [effort, setEffort] = createSignal('high');
+	const [effort, setEffort] = createSignal(readSavedState().effort ?? 'high');
 	const [picker, setPicker] = createSignal<PickerKind | null>(null);
 	const [modelPanelView, setModelPanelView] = createSignal<'main' | 'effort' | 'model'>('main');
 	const [modelQuery, setModelQuery] = createSignal('');
@@ -952,6 +952,7 @@ function ChatApp() {
 												class={`lens-picker-item ${effort() === value ? 'selected' : ''}`}
 												onClick={() => {
 													setEffort(value);
+													saveState({ effort: value });
 													setModelPanelView('main');
 												}}
 											>
