@@ -233,8 +233,8 @@ class LensChatHost {
 			}
 			case 'session.diff': {
 				try {
-					const data = await client.request('GET', `/session/${encodeURIComponent(message.sessionID)}/diff`);
-					this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });
+					const data = await sessionDiff(client, message.sessionID);
+					this.post(webview, { type: 'result', requestType: message.type, data });
 				} catch {
 					this.post(webview, { type: 'result', requestType: message.type, data: [] });
 				}
@@ -505,6 +505,57 @@ function hideUpstreamSkills(data: unknown): unknown {
 		const name = item && typeof item === 'object' ? (item as { name?: unknown }).name : undefined;
 		return typeof name !== 'string' || !UPSTREAM_NAMES.has(name);
 	});
+}
+
+interface SessionFileDiff {
+	readonly file?: string;
+	readonly path?: string;
+	readonly additions?: number;
+	readonly deletions?: number;
+	readonly status?: string;
+	readonly [key: string]: unknown;
+}
+
+/**
+ * The engine only stores a diff per turn, keyed by the user message that started it
+ * (GET /session/:id/diff?messageID=<user message id>; no messageID always returns []). Lens Chat
+ * wants one "files changed" summary for the whole session, so fetch every turn's diff and merge
+ * them by file path, summing additions and deletions and keeping the most recent status.
+ */
+async function sessionDiff(client: OpencodeHostClient, sessionID: string): Promise<SessionFileDiff[]> {
+	const messages = unwrapList(await client.request('GET', `/session/${encodeURIComponent(sessionID)}/message`));
+	const userMessageIDs = (Array.isArray(messages) ? messages : [])
+		.map(item => (item as { info?: { role?: string; id?: string } })?.info)
+		.filter(info => info?.role === 'user' && info.id)
+		.map(info => info!.id!);
+
+	const perTurn = await Promise.all(userMessageIDs.map(messageID =>
+		client.request<unknown>('GET', `/session/${encodeURIComponent(sessionID)}/diff?messageID=${encodeURIComponent(messageID)}`)
+			.then(data => unwrapList(data))
+			.catch(() => []),
+	));
+
+	const merged = new Map<string, SessionFileDiff>();
+	for (const diffs of perTurn) {
+		if (!Array.isArray(diffs)) {
+			continue;
+		}
+		for (const entry of diffs as SessionFileDiff[]) {
+			const path = entry.file ?? entry.path;
+			if (!path) {
+				continue;
+			}
+			const existing = merged.get(path);
+			merged.set(path, {
+				...entry,
+				// The engine's diff entries key the filename as `file`; the webview's review panel reads `path`.
+				path,
+				additions: (existing?.additions ?? 0) + (entry.additions ?? 0),
+				deletions: (existing?.deletions ?? 0) + (entry.deletions ?? 0),
+			});
+		}
+	}
+	return [...merged.values()];
 }
 
 function unwrapList(data: unknown): unknown {
