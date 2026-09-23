@@ -1,5 +1,5 @@
 import type { ExtensionContext, TextDocumentContentProvider, TextEditorDecorationType, Webview, WebviewView, WebviewViewProvider } from 'vscode';
-import { commands, EventEmitter, OverviewRulerLane, Range, TextEditorRevealType, ThemeColor, Uri, window, workspace } from 'vscode';
+import { commands, EventEmitter, extensions, OverviewRulerLane, Range, TextEditorRevealType, ThemeColor, Uri, window, workspace } from 'vscode';
 import { randomBytes } from 'crypto';
 import { readFileSync } from 'fs';
 import { basename, isAbsolute, join } from 'path';
@@ -223,12 +223,19 @@ class LensChatHost {
 				return;
 			}
 			case 'find.symbols': {
+				let data: unknown;
 				try {
-					const data = await client.request('GET', `/find/symbol?query=${encodeURIComponent(message.query)}`);
-					this.post(webview, { type: 'result', requestType: message.type, data: unwrapList(data) });
+					data = unwrapList(await client.request('GET', `/find/symbol?query=${encodeURIComponent(message.query)}`));
 				} catch {
-					this.post(webview, { type: 'result', requestType: message.type, data: [] });
+					data = [];
 				}
+				// The hardened engine runs no language servers, so its own symbol search is
+				// always empty. Fall back to the editor's own workspace symbol providers,
+				// which run in-process and need no downloaded LSP.
+				if (!Array.isArray(data) || data.length === 0) {
+					data = await findWorkspaceSymbols(message.query);
+				}
+				this.post(webview, { type: 'result', requestType: message.type, data });
 				return;
 			}
 			case 'session.diff': {
@@ -556,6 +563,52 @@ async function sessionDiff(client: OpencodeHostClient, sessionID: string): Promi
 		}
 	}
 	return [...merged.values()];
+}
+
+// Built-in language extensions register their workspace symbol provider only once
+// activated, and they activate on opening a matching file, which never happens for
+// a file the user only @-mentions in chat. Warm them once so symbol search works
+// without the user having opened anything first. This activates bundled extensions
+// already shipped with Lens; it does not download or install anything.
+const LANGUAGE_EXTENSIONS_FOR_SYMBOLS = [
+	'vscode.typescript-language-features',
+	'vscode.json-language-features',
+	'vscode.css-language-features',
+	'vscode.html-language-features',
+];
+let languageExtensionsWarmed: Promise<void> | undefined;
+
+function warmLanguageExtensions(): Promise<void> {
+	if (!languageExtensionsWarmed) {
+		languageExtensionsWarmed = (async () => {
+			await Promise.all(LANGUAGE_EXTENSIONS_FOR_SYMBOLS.map(id => extensions.getExtension(id)?.activate().then(() => undefined, () => undefined)));
+			// A language server only indexes files it has been told about. Opening every
+			// source file as a background document (not shown in any editor) is what makes
+			// the language extensions' own workspace symbol providers see the project,
+			// without needing the user to have opened anything first.
+			const files = await workspace.findFiles('**/*.{ts,tsx,js,jsx,json,css,scss,html}', '**/{node_modules,.git,dist,out,build}/**', 200);
+			await Promise.all(files.map(uri => workspace.openTextDocument(uri).then(() => undefined, () => undefined)));
+		})();
+	}
+	return languageExtensionsWarmed;
+}
+
+async function findWorkspaceSymbols(query: string): Promise<Array<{ name: string; location: { uri: string } }>> {
+	try {
+		await warmLanguageExtensions();
+		// The very first query can race the just-opened documents' initial parse, so retry
+		// briefly instead of surfacing an empty result on that first keystroke.
+		let results: Array<{ name: string; location: { uri: Uri } }> | undefined;
+		for (let attempt = 0; attempt < 3 && !results?.length; attempt++) {
+			if (attempt > 0) {
+				await new Promise(resolve => setTimeout(resolve, 300));
+			}
+			results = await commands.executeCommand<Array<{ name: string; location: { uri: Uri } }>>('vscode.executeWorkspaceSymbolProvider', query);
+		}
+		return (results ?? []).slice(0, 8).map(symbol => ({ name: symbol.name, location: { uri: symbol.location.uri.toString() } }));
+	} catch {
+		return [];
+	}
 }
 
 function unwrapList(data: unknown): unknown {
