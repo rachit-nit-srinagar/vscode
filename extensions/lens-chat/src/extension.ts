@@ -242,12 +242,12 @@ class LensChatHost {
 			}
 			case 'command.list': {
 				const data = await client.request('GET', '/command');
-				this.post(webview, { type: 'result', requestType: message.type, data });
+				this.post(webview, { type: 'result', requestType: message.type, data: hideUpstreamSkills(data) });
 				return;
 			}
 			case 'skill.list': {
 				const data = await client.request('GET', '/skill');
-				this.post(webview, { type: 'result', requestType: message.type, data });
+				this.post(webview, { type: 'result', requestType: message.type, data: hideUpstreamSkills(data) });
 				return;
 			}
 			case 'agent.list': {
@@ -489,6 +489,22 @@ function sessionPromptBody(message: { agent?: string; variant?: string; model?: 
 		body.model = { providerID, modelID };
 	}
 	return body;
+}
+
+// The engine ships a built-in "customize-opencode" skill that names the upstream project it is
+// forked from, exposed both as a skill and as a generated slash command. Lens never surfaces
+// that name to the user, so it is filtered out of both lists.
+const UPSTREAM_NAMES = new Set(['customize-opencode']);
+
+function hideUpstreamSkills(data: unknown): unknown {
+	const list = unwrapList(data);
+	if (!Array.isArray(list)) {
+		return data;
+	}
+	return list.filter(item => {
+		const name = item && typeof item === 'object' ? (item as { name?: unknown }).name : undefined;
+		return typeof name !== 'string' || !UPSTREAM_NAMES.has(name);
+	});
 }
 
 function unwrapList(data: unknown): unknown {

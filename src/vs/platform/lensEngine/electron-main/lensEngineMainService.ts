@@ -184,6 +184,8 @@ export class LensEngineMainService extends Disposable implements ILensEngineMain
 			OPENCODE_DISABLE_AUTOUPDATE: '1',
 			// A workspace must not be able to loosen permissions or add agents/instructions via its own opencode config.
 			OPENCODE_DISABLE_PROJECT_CONFIG: '1',
+			// Lens is not Claude Code: never read another tool's ~/.claude/skills or ~/.claude/CLAUDE.md.
+			OPENCODE_DISABLE_CLAUDE_CODE: '1',
 			OPENCODE_LENS_EGRESS_EXTRA_FILE: this.egressFile,
 			// Only the user's own Lens settings can opt into plugins or local MCP servers.
 			OPENCODE_LENS_ALLOW_USER_PLUGINS: userConfig.pluginsAllowed ? '1' : '',
