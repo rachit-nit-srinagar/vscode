@@ -92,6 +92,7 @@ function ChatApp() {
 	const [draft, setDraft] = createSignal('');
 	const [busy, setBusy] = createSignal(false);
 	const [historyOpen, setHistoryOpen] = createSignal(false);
+	const [focusMode, setFocusMode] = createSignal(readSavedState().focusMode ?? false);
 	const [history, setHistory] = createSignal<HistoryItem[]>([]);
 	const [historyQuery, setHistoryQuery] = createSignal('');
 	const [agents, setAgents] = createSignal<AgentInfo[]>([]);
@@ -1044,6 +1045,19 @@ function ChatApp() {
 						</Show>
 					</div>
 					<div class="lens-header-actions">
+						<button
+							type="button"
+							class={`lens-icon-btn ${focusMode() ? 'active' : ''}`}
+							title={focusMode() ? 'Show tool calls' : 'Focus view: hide tool calls'}
+							aria-pressed={focusMode()}
+							onClick={() => {
+								const next = !focusMode();
+								setFocusMode(next);
+								saveState({ focusMode: next });
+							}}
+						>
+							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 3.5c-3.5 0-5.9 3-6.8 4.2a.6.6 0 0 0 0 .6C2.1 9.5 4.5 12.5 8 12.5s5.9-3 6.8-4.2a.6.6 0 0 0 0-.6C13.9 6.5 11.5 3.5 8 3.5Zm0 7.5a3 3 0 1 1 0-6 3 3 0 0 1 0 6Zm0-1.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" /></svg>
+						</button>
 						<button type="button" class="lens-icon-btn" title="New Chat" onClick={() => createSession()}>
 							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8.5 2.5a.5.5 0 0 0-1 0V7.5H2.5a.5.5 0 0 0 0 1H7.5v5a.5.5 0 0 0 1 0V8.5h5a.5.5 0 0 0 0-1H8.5V2.5Z" /></svg>
 						</button>
@@ -1129,6 +1143,7 @@ function ChatApp() {
 								busy={busy()}
 								isLast={index() === messages().length - 1}
 								message={message}
+								focusMode={focusMode()}
 								questions={sessionQuestions()}
 								rewound={checkpoints.firstRewound() >= 0 && index() >= checkpoints.firstRewound()}
 								userActions={message.info?.id ? <RewindMenu disabled={busy() || !!checkpoints.pending()} onPick={action => checkpoints.run(action, message)} /> : undefined}

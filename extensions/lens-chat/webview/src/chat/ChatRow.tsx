@@ -11,7 +11,7 @@ import type { ChatMessage, ChatPart, QuestionRequest } from './types';
 import { vscode } from '../vscode';
 import { ProviderErrorView } from './ProviderError';
 
-export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: boolean; questions?: QuestionRequest[]; rewound?: boolean; userActions?: JSX.Element }) {
+export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: boolean; questions?: QuestionRequest[]; rewound?: boolean; userActions?: JSX.Element; focusMode?: boolean }) {
 	const role = createMemo(() => messageRole(props.message));
 	const parts = createMemo(() => (props.message.parts ?? []).filter(isVisiblePart));
 	const reads = createMemo(() => (props.message.parts ?? []).flatMap(part => {
@@ -37,18 +37,20 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 								<Switch>
 									<Match when={group.kind === 'tools' ? group.parts : undefined}>
 										{toolParts => (
-											<div class="lens-tool-group">
-												<For each={toolParts()}>
-													{part => (
-														<AssistantPart
-															part={part}
-															questions={props.questions ?? []}
-															reads={reads()}
-															streaming={!!props.busy && !!props.isLast && part === lastPart()}
-														/>
-													)}
-												</For>
-											</div>
+											<Show when={!props.focusMode} fallback={<FocusedToolGroup parts={toolParts()} />}>
+												<div class="lens-tool-group">
+													<For each={toolParts()}>
+														{part => (
+															<AssistantPart
+																part={part}
+																questions={props.questions ?? []}
+																reads={reads()}
+																streaming={!!props.busy && !!props.isLast && part === lastPart()}
+															/>
+														)}
+													</For>
+												</div>
+											</Show>
 										)}
 									</Match>
 									<Match when={group.kind === 'part' ? group.part : undefined}>
@@ -79,6 +81,26 @@ export function ChatRow(props: { message: ChatMessage; isLast?: boolean; busy?: 
 					<ProviderErrorView text={error()!} />
 				</Show>
 			</div>
+		</Show>
+	);
+}
+
+/** Focus view: a one-line summary that replaces a group of tool cards, click to reveal them. */
+function FocusedToolGroup(props: { parts: ChatPart[] }) {
+	const [revealed, setRevealed] = createSignal(false);
+	const count = () => props.parts.length;
+	const label = () => (count() === 1 ? toolLabel(props.parts[0]?.tool || 'tool', props.parts[0]?.state?.status) : `${count()} tool calls`);
+
+	return (
+		<Show when={!revealed()} fallback={
+			<div class="lens-tool-group">
+				<For each={props.parts}>{part => <AssistantPart part={part} questions={[]} reads={[]} />}</For>
+			</div>
+		}>
+			<button type="button" class="lens-tool-focused" onClick={() => setRevealed(true)}>
+				<span class="lens-tool-focused-dot" />
+				{label()}
+			</button>
 		</Show>
 	);
 }

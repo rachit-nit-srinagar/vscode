@@ -563,6 +563,32 @@ body {
 	border-left: 2px solid var(--vscode-widget-border, var(--vscode-panel-border));
 }
 
+.lens-tool-focused {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 2px 0 4px;
+	padding: 3px 8px;
+	border: none;
+	border-radius: 999px;
+	background: var(--vscode-badge-background, var(--vscode-toolbar-hoverBackground));
+	color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.lens-tool-focused:hover {
+	color: var(--vscode-foreground);
+}
+
+.lens-tool-focused-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: currentColor;
+	opacity: 0.6;
+}
+
 .lens-call-card {
 	min-width: 0;
 	background: var(--vscode-editor-background, var(--vscode-sideBar-background));
