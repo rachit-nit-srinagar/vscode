@@ -52,6 +52,8 @@ export type WebviewToHost =
 	| { type: 'chat.settings' }
 	/** `/export`: the webview already rendered the transcript to Markdown; the host saves it to a file. */
 	| { type: 'chat.export'; markdown: string; title: string }
+	/** `/btw`: a side question answered in a scratch session, never added to the active chat's context. */
+	| { type: 'chat.btw'; requestId: string; text: string; agent?: string; variant?: string; model?: SessionPromptModel }
 	| { type: 'find.files'; query: string }
 	| { type: 'find.symbols'; query: string }
 	| { type: 'session.diff'; sessionID: string }

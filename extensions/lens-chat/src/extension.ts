@@ -6,7 +6,7 @@ import { basename, isAbsolute, join } from 'path';
 import { isCheckpointRequest, runCheckpoint, withoutRewoundTurns } from './checkpoints';
 import { EditorContextTracker } from './editorContextTracker';
 import { OpencodeHostClient } from './opencodeClient';
-import type { HostToWebview, ILensUserConfig, McpConfig, PromptPart, WebviewToHost } from './protocol';
+import type { HostToWebview, ILensUserConfig, McpConfig, PromptPart, SessionPromptModel, WebviewToHost } from './protocol';
 
 const LENS_DIFF_SCHEME = 'lens-diff';
 
@@ -245,6 +245,11 @@ class LensChatHost {
 				this.post(webview, { type: 'result', requestType: message.type, data });
 				return;
 			}
+			case 'chat.btw': {
+				const data = await this.askAside(client, message.text, { agent: message.agent, variant: message.variant, model: message.model });
+				this.post(webview, { type: 'result', requestType: message.type, data: { requestId: message.requestId, ...data } });
+				return;
+			}
 			case 'session.abort': {
 				const data = await client.request('POST', `/session/${encodeURIComponent(message.sessionID)}/abort`);
 				this.post(webview, { type: 'result', requestType: message.type, data });
@@ -453,6 +458,37 @@ class LensChatHost {
 			await window.showTextDocument(await workspace.openTextDocument(target), { preview: false });
 		} catch (error) {
 			window.showErrorMessage(`Could not export the chat: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	/**
+	 * `/btw`: answers a side question in a throwaway session, deleted right after, so it never
+	 * joins the active chat's history and can't be resent to the model as later context.
+	 */
+	private async askAside(client: OpencodeHostClient, text: string, options: { agent?: string; variant?: string; model?: SessionPromptModel }): Promise<{ text?: string; error?: string }> {
+		let sessionID: string | undefined;
+		try {
+			const created = unwrapSession(await client.request('POST', '/session', sessionCreateBody({ agent: options.agent, model: options.model ? { id: options.model.modelID, providerID: options.model.providerID } : undefined })));
+			sessionID = (created as { id?: string })?.id;
+			if (!sessionID) {
+				return { error: 'Could not start a side question: the engine did not return a session.' };
+			}
+			const parts: PromptPart[] = [{ type: 'text', text }];
+			const data = await client.request('POST', `/session/${encodeURIComponent(sessionID)}/message`, sessionPromptBody({ agent: options.agent, variant: options.variant, model: options.model }, parts));
+			const reply = (data as { parts?: { type?: string; text?: string; synthetic?: boolean }[] })?.parts
+				?.filter(part => part?.type === 'text' && !part.synthetic)
+				.map(part => part.text ?? '')
+				.join('\n\n')
+				.trim();
+			return { text: reply || 'No reply.' };
+		} catch (error) {
+			return { error: error instanceof Error ? error.message : String(error) };
+		} finally {
+			if (sessionID) {
+				await client.request('DELETE', `/session/${encodeURIComponent(sessionID)}`).catch(() => {
+					// Best-effort cleanup; a leftover scratch session is harmless.
+				});
+			}
 		}
 	}
 

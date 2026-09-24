@@ -32,6 +32,7 @@ import { applyChatEvent, eventSessionID } from './chat/streamEvents';
 import { ContextMeter } from './chat/ContextMeter';
 import { autoCompactDecision, COMPACT_COMMAND, COMPACT_DESCRIPTION, contextUsage, normalizeThreshold } from './chat/contextMeter';
 import { EXPORT_COMMAND, EXPORT_DESCRIPTION, transcriptToMarkdown } from './chat/exportChat';
+import { BTW_COMMAND, BTW_DESCRIPTION, type AsideNote } from './chat/btw';
 import { FollowUpQueue } from './chat/FollowUpQueue';
 import {
 	createTurnBoundaryWatcher,
@@ -93,6 +94,7 @@ function ChatApp() {
 	const [busy, setBusy] = createSignal(false);
 	const [historyOpen, setHistoryOpen] = createSignal(false);
 	const [focusMode, setFocusMode] = createSignal(readSavedState().focusMode ?? false);
+	const [asides, setAsides] = createSignal<AsideNote[]>([]);
 	const [history, setHistory] = createSignal<HistoryItem[]>([]);
 	const [historyQuery, setHistoryQuery] = createSignal('');
 	const [agents, setAgents] = createSignal<AgentInfo[]>([]);
@@ -145,6 +147,7 @@ function ChatApp() {
 	const slashCatalog: SlashItem[] = [
 		{ kind: 'command', name: COMPACT_COMMAND, description: COMPACT_DESCRIPTION },
 		{ kind: 'command', name: EXPORT_COMMAND, description: EXPORT_DESCRIPTION },
+		{ kind: 'command', name: BTW_COMMAND, description: BTW_DESCRIPTION },
 	];
 	// Messages sent while a turn runs, per session; each goes out when its session's run ends.
 	const [followUps, setFollowUps] = createSignal<FollowUpState>(restoreFollowUps(readSavedState().followUps));
@@ -322,6 +325,14 @@ function ChatApp() {
 	function handleResult(requestType: string, data: unknown) {
 		if (requestType === 'chat.settings') {
 			setAutoCompactThreshold(normalizeThreshold((data as { autoCompactThreshold?: unknown } | undefined)?.autoCompactThreshold));
+			return;
+		}
+		if (requestType === 'chat.btw') {
+			const reply = data as { requestId?: string; text?: string; error?: string } | undefined;
+			if (!reply?.requestId) {
+				return;
+			}
+			setAsides(current => current.map(note => note.id === reply.requestId ? { ...note, loading: false, answer: reply.text, error: reply.error } : note));
 			return;
 		}
 		if (requestType === 'session.summarize') {
@@ -675,6 +686,24 @@ function ChatApp() {
 		vscode.postMessage({ type: 'chat.export', markdown, title: title ? formatSessionTitle(title) : 'lens-chat' });
 	}
 
+	function askAside(question: string) {
+		const id = `btw-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+		setAsides(current => [...current, { id, question, loading: true }]);
+		const ref = parseModelRef(model());
+		vscode.postMessage({
+			type: 'chat.btw',
+			requestId: id,
+			text: question,
+			agent: agent(),
+			variant: effort(),
+			model: ref ? { providerID: ref.providerID, modelID: ref.modelID } : undefined,
+		});
+	}
+
+	function dismissAside(id: string) {
+		setAsides(current => current.filter(note => note.id !== id));
+	}
+
 	// Auto-compaction: once a turn this view watched has settled, compact if the context is over the
 	// threshold. The engine still compacts on its own mid-turn when the window is completely full.
 	const watchedTurns = new Set<string>();
@@ -738,6 +767,15 @@ function ChatApp() {
 			setDraft('');
 			setSlashOpen(false);
 			exportSession();
+			return;
+		}
+		if (text.startsWith(`/${BTW_COMMAND} `) && !attachments().length) {
+			const question = text.slice(BTW_COMMAND.length + 2).trim();
+			if (question) {
+				setDraft('');
+				setSlashOpen(false);
+				askAside(question);
+			}
 			return;
 		}
 		// The engine still strips unsupported images and tells the model, but the user should learn that too.
@@ -819,6 +857,12 @@ function ChatApp() {
 			setSlashOpen(false);
 			closePicker();
 			exportSession();
+			return;
+		}
+		if (item.kind === 'command' && item.name === BTW_COMMAND) {
+			setDraft(`/${BTW_COMMAND} `);
+			setSlashOpen(false);
+			closePicker();
 			return;
 		}
 		const rest = draft().replace(/(^|\s)\/([^\s]*)$/, ' ').trim();
@@ -1207,6 +1251,28 @@ function ChatApp() {
 				</Show>
 				<Show when={error() && !errorShownInConversation()}>
 					<div class="lens-error"><ProviderErrorView text={error()} /></div>
+				</Show>
+				<Show when={asides().length}>
+					<div class="lens-asides">
+						<For each={asides()}>
+							{note => (
+								<div class="lens-aside">
+									<div class="lens-aside-head">
+										<span class="lens-aside-label">Aside</span>
+										<span class="lens-aside-question">{note.question}</span>
+										<button type="button" class="lens-aside-dismiss" title="Dismiss" onClick={() => dismissAside(note.id)}>
+											<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="m8 8.7 3.1 3.1a.5.5 0 0 0 .7-.7L8.7 8l3.1-3.1a.5.5 0 0 0-.7-.7L8 7.3 4.9 4.2a.5.5 0 1 0-.7.7L7.3 8l-3.1 3.1a.5.5 0 0 0 .7.7L8 8.7Z" /></svg>
+										</button>
+									</div>
+									<Show when={!note.loading} fallback={<div class="lens-aside-loading">Thinking…</div>}>
+										<Show when={!note.error} fallback={<div class="lens-aside-error">{note.error}</div>}>
+											<div class="lens-aside-answer">{note.answer}</div>
+										</Show>
+									</Show>
+								</div>
+							)}
+						</For>
+					</div>
 				</Show>
 				<div class="lens-composer">
 					<Show when={mentions().length}>
