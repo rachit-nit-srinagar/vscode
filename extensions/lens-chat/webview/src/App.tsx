@@ -274,7 +274,7 @@ function ChatApp() {
 					return;
 				}
 				if (historyOpen()) {
-					setHistoryOpen(false);
+					closeHistory();
 					return;
 				}
 				if (slashOpen() || mentions().length) {
@@ -1011,6 +1011,17 @@ function ChatApp() {
 	});
 	let timeline: HTMLDivElement | undefined;
 	let tabsList: HTMLDivElement | undefined;
+	let historyButton: HTMLButtonElement | undefined;
+	let historySearch: HTMLInputElement | undefined;
+
+	function focusComposer() {
+		document.querySelector<HTMLTextAreaElement>('textarea.lens-input')?.focus();
+	}
+
+	function closeHistory() {
+		setHistoryOpen(false);
+		historyButton?.focus();
+	}
 	createEffect(() => {
 		messages();
 		busy();
@@ -1061,13 +1072,29 @@ function ChatApp() {
 							</div>
 						}>
 							<For each={tabs()}>
-								{tab => (
+								{(tab, index) => (
 									<div
 										class={`lens-tab ${active() === tab.id ? 'active' : ''}`}
 										role="tab"
 										aria-selected={active() === tab.id}
+										tabIndex={active() === tab.id ? 0 : -1}
 										title={formatSessionTitle(tab.title) || 'New chat'}
 										onClick={() => selectTab(tab.id)}
+										onKeyDown={event => {
+											if (event.key === 'Enter' || event.key === ' ') {
+												event.preventDefault();
+												selectTab(tab.id);
+												return;
+											}
+											if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+												event.preventDefault();
+												const next = tabs()[index() + (event.key === 'ArrowRight' ? 1 : -1)];
+												if (next) {
+													selectTab(next.id);
+													(event.currentTarget.parentElement?.children[index() + (event.key === 'ArrowRight' ? 1 : -1)] as HTMLElement | undefined)?.focus();
+												}
+											}
+										}}
 									>
 										<ChatTabIcon />
 										<span class="lens-tab-label">{formatSessionTitle(tab.title) || 'New chat'}</span>
@@ -1093,6 +1120,7 @@ function ChatApp() {
 							type="button"
 							class={`lens-icon-btn ${focusMode() ? 'active' : ''}`}
 							title={focusMode() ? 'Show tool calls' : 'Focus view: hide tool calls'}
+							aria-label={focusMode() ? 'Show tool calls' : 'Focus view: hide tool calls'}
 							aria-pressed={focusMode()}
 							onClick={() => {
 								const next = !focusMode();
@@ -1102,18 +1130,22 @@ function ChatApp() {
 						>
 							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 3.5c-3.5 0-5.9 3-6.8 4.2a.6.6 0 0 0 0 .6C2.1 9.5 4.5 12.5 8 12.5s5.9-3 6.8-4.2a.6.6 0 0 0 0-.6C13.9 6.5 11.5 3.5 8 3.5Zm0 7.5a3 3 0 1 1 0-6 3 3 0 0 1 0 6Zm0-1.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" /></svg>
 						</button>
-						<button type="button" class="lens-icon-btn" title="New Chat" onClick={() => createSession()}>
+						<button type="button" class="lens-icon-btn" title="New Chat" aria-label="New Chat" onClick={() => createSession()}>
 							<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8.5 2.5a.5.5 0 0 0-1 0V7.5H2.5a.5.5 0 0 0 0 1H7.5v5a.5.5 0 0 0 1 0V8.5h5a.5.5 0 0 0 0-1H8.5V2.5Z" /></svg>
 						</button>
 						<button
+							ref={el => { historyButton = el; }}
 							type="button"
 							class={`lens-icon-btn ${historyOpen() ? 'active' : ''}`}
 							title="History"
+							aria-label="History"
+							aria-expanded={historyOpen()}
 							onClick={() => {
 								const next = !historyOpen();
 								setHistoryOpen(next);
 								if (next) {
 									vscode.postMessage({ type: 'session.list', search: historyQuery() });
+									historySearch?.focus();
 								}
 							}}
 						>
@@ -1122,8 +1154,8 @@ function ChatApp() {
 					</div>
 				</header>
 				<Show when={historyOpen()}>
-					<div class="lens-history">
-						<input class="lens-history-search" placeholder="Search chats" value={historyQuery()} onInput={event => {
+					<div class="lens-history" role="dialog" aria-label="Chat history">
+						<input ref={el => { historySearch = el; }} class="lens-history-search" placeholder="Search chats" value={historyQuery()} onInput={event => {
 							const value = event.currentTarget.value;
 							setHistoryQuery(value);
 							vscode.postMessage({ type: 'session.list', search: value });
@@ -1141,6 +1173,7 @@ function ChatApp() {
 													}
 													selectTab(item.id);
 													setHistoryOpen(false);
+													focusComposer();
 												}}>{item.title ? formatSessionTitle(item.title) : item.id}</button>
 												<span class="lens-history-actions">
 													<button class="lens-text-btn" onClick={() => vscode.postMessage({ type: 'session.update', sessionID: item.id, archived: true })}>Archive</button>
@@ -1160,11 +1193,11 @@ function ChatApp() {
 				<Show when={deleteConfirm()}>
 					{item => (
 						<div class="lens-modal">
-							<div class="lens-dialog">
-								<strong>Delete chat?</strong>
+							<div class="lens-dialog" role="alertdialog" aria-modal="true" aria-labelledby="lens-delete-title">
+								<strong id="lens-delete-title">Delete chat?</strong>
 								<div class="lens-muted">"{item().title}" will be permanently deleted.</div>
 								<div class="lens-input-row">
-									<button class="lens-icon" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+									<button class="lens-icon" ref={el => { el.focus(); }} onClick={() => setDeleteConfirm(null)}>Cancel</button>
 									<button class="lens-send" onClick={() => {
 										vscode.postMessage({ type: 'session.delete', sessionID: item().id });
 										setDeleteConfirm(null);
@@ -1174,7 +1207,7 @@ function ChatApp() {
 						</div>
 					)}
 				</Show>
-				<div class="lens-timeline" ref={timeline} onClick={event => {
+				<div class="lens-timeline" role="log" aria-live="polite" aria-relevant="additions text" ref={timeline} onClick={event => {
 					handleImageThumbClick(event);
 					handleCodeCopyClick(event);
 				}}>
@@ -1209,7 +1242,7 @@ function ChatApp() {
 					</Show>
 				</div>
 				<Show when={sessionPermissions().length}>
-					<div class="lens-dock">
+					<div class="lens-dock" role="alert" aria-live="assertive">
 						<For each={sessionPermissions()}>
 							{request => (
 								<div class="lens-card">
@@ -1503,7 +1536,7 @@ function ChatApp() {
 							<span class="lens-effort-chip" aria-hidden="true">{effort()}</span>
 							<span class="lens-toolbar-spacer" />
 							<ContextMeter usage={currentContextUsage()} threshold={autoCompactThreshold()} />
-							<button class="lens-icon-btn" title="Attach" onClick={() => fileInput?.click()}>
+							<button class="lens-icon-btn" title="Attach" aria-label="Attach" onClick={() => fileInput?.click()}>
 								<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M10.3 2.54a2.75 2.75 0 0 1 3.89 3.89l-6.4 6.4a3.75 3.75 0 0 1-5.3-5.3l5.48-5.48a.75.75 0 0 1 1.06 1.06L4.55 8.59a2.25 2.25 0 0 0 3.18 3.18l6.4-6.4a1.25 1.25 0 1 0-1.77-1.77L6.54 9.42a.75.75 0 1 1-1.06-1.06l5.82-5.82Z" /></svg>
 							</button>
 							<input
@@ -1518,13 +1551,14 @@ function ChatApp() {
 								}}
 							/>
 							<Show when={SpeechRecognitionCtor}>
-								<button class="lens-icon-btn" title="Voice" onClick={dictate}>
+								<button class="lens-icon-btn" title="Voice" aria-label="Voice" onClick={dictate}>
 									<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 1.5a2 2 0 0 0-2 2v4a2 2 0 1 0 4 0v-4a2 2 0 0 0-2-2Zm-3.5 6a.75.75 0 0 0-1.5 0 5 5 0 0 0 4.25 4.94V14H5.75a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5H8.75v-1.56A5 5 0 0 0 13 7.5a.75.75 0 0 0-1.5 0 3.5 3.5 0 1 1-7 0Z" /></svg>
 								</button>
 							</Show>
 							<button
 								class={`lens-send-btn ${busy() ? 'stop' : ''}`}
 								title={busy() ? 'Stop' : 'Send'}
+								aria-label={busy() ? 'Stop' : 'Send'}
 								disabled={!busy() && !draft().trim() && !attachments().length}
 								onClick={() => busy() ? stopTurn() : send()}
 							>
